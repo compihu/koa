@@ -1,0 +1,5 @@
+/alarmpi/*
+/cache/*
+/*.img*
+/ArchLinuxARM-rpi-*
+
