@@ -84,6 +84,11 @@ for d in dev run proc sys; do sudo mount --bind /$d "$DST/$d"; done
 if [ ! -d /run/systemd/resolve/ ]; then sudo mkdir -p /run/systemd/resolve; fi
 if [ ! -f /run/systemd/resolve/resolv.conf ]; then sudo cp -L /etc/resolv.conf /run/systemd/resolve/; fi
 
+mkdir "$DST/mnt/fsroot"
+sudo tee -a "$DST/etc/fstab" >/dev/null <<-EOF
+	/dev/mmcblk0p2 /mnt/fsroot btrfs defaults,compress=zstd:15,noatime 0 0
+EOF
+
 sudo tee "$DST/etc/systemd/network/wlan.network" >/dev/null <<-EOF
 	[Match]
 	Name=wlan0
@@ -98,7 +103,6 @@ sudo tee "$DST/etc/wpa_supplicant/wpa_supplicant-wlan0.conf" >/dev/null <<-EOF
 	update_config=1
 
 	network={
-
 	  ssid="$WIFI_SSID"
 	  psk="$WIFI_PASSWD"
 	  key_mgmt=WPA-PSK
@@ -119,6 +123,12 @@ sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
 
 sudo cp alarmpi-setup.sh "$DST/"
 sudo chroot "$DST" /alarmpi-setup.sh
+sudo rm "$DST/alarmpi-setup.sh"
 
-sudo fuser -k "$DST"
+sudo fuser -k "$DST" || true
 
+sudo umount -R "$DST"
+sudo mount ${parts[1]} "$DST" -ocompress=zstd:15
+sudo btrfs sub snap "$DST/@arch_root" "$DST/@arch_root.inst"
+sudo umount "$DST"
+sudo kpartx -d "$IMG"

@@ -2,4 +2,4 @@
 /cache/*
 /*.img*
 /ArchLinuxARM-rpi-*
-
+/alarmpi-secrets.sh
