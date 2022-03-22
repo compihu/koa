@@ -17,7 +17,7 @@ git -C /etc config user.name "EtcKeeper"
 git -C /etc config user.email "root@alarmpi"
 etckeeper commit -m "Initial commit"
 
-pacman --noconfirm -S vim mc screen pv sudo base-devel man-db parted bash-completion
+pacman --noconfirm -S vim mc screen pv sudo base-devel man-db parted bash-completion usbutils
 sed -i \
 	-e "s/^# %wheel ALL=(ALL:ALL) NOPASSWD: ALL/%wheel ALL=(ALL:ALL) NOPASSWD: ALL/" \
 	/etc/sudoers
