@@ -39,6 +39,7 @@ cat >/home/alarm/alarmpi-user.sh <<-EOF
 	set -ex
 
 	yay -S --noconfirm --removemake octoprint-venv
+	yay -S --noconfirm --removemake --mflags --nocheck klipper-py3-git
 EOF
 chmod a+x /home/alarm/alarmpi-user.sh
 su -l -c /home/alarm/alarmpi-user.sh alarm

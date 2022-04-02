@@ -84,7 +84,7 @@ for d in dev run proc sys; do sudo mount --bind /$d "$DST/$d"; done
 if [ ! -d /run/systemd/resolve/ ]; then sudo mkdir -p /run/systemd/resolve; fi
 if [ ! -f /run/systemd/resolve/resolv.conf ]; then sudo cp -L /etc/resolv.conf /run/systemd/resolve/; fi
 
-mkdir "$DST/mnt/fsroot"
+sudo mkdir "$DST/mnt/fsroot"
 sudo tee -a "$DST/etc/fstab" >/dev/null <<-EOF
 	/dev/mmcblk0p2 /mnt/fsroot btrfs defaults,compress=zstd:15,noatime 0 0
 EOF
