@@ -12,6 +12,11 @@ CACHE="${3:-cache}"
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
 
+if [ ! -x alarmpi-secrets.sh ]; then
+  echo "Create alarmpi-secrets.sh to set WIFI_SSID and WIFI_PASSWD"
+  exit 1
+fi
+
 . ./alarmpi-secrets.sh
 
 imgsize_mb=2000
