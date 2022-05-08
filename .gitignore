@@ -1,8 +1,8 @@
-/alarmpi/*
-/cache/*
-/mainsail-build/*
+/alarmpi/
+/cache/
+/mainsail-build/
 /*.img*
 /ArchLinuxARM-rpi-*
-/.vscode/*
-/alarmpi-secrets.sh
-/config_user/
+/.vscode/
+/user/
+/*.log

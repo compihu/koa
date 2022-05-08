@@ -17,7 +17,7 @@ git -C /etc config user.name "EtcKeeper"
 git -C /etc config user.email "root@alarmpi"
 etckeeper commit -m "Initial commit"
 
-pacman --noconfirm -S vim mc screen pv sudo base-devel man-db parted bash-completion usbutils nginx
+pacman --noconfirm -S vim mc screen pv sudo base-devel man-db parted bash-completion usbutils nginx polkit
 echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' >/etc/sudoers.d/wheel-nopasswd
 usermod -aG wheel alarm
 
@@ -28,7 +28,7 @@ cd /root
 git clone https://aur.archlinux.org/yay-bin.git
 cd yay-bin
 env EUID=1000 makepkg
-pacman --noconfirm -U yay-bin-*.pkg.tar.xz
+pacman --noconfirm -U yay-bin-*.pkg.*
 cd /root
 rm -rf yay-bin
 
@@ -45,9 +45,8 @@ cat >/home/alarm/alarmpi-user.sh <<-EOF
 EOF
 chmod a+x /home/alarm/alarmpi-user.sh
 su -l -c /home/alarm/alarmpi-user.sh alarm
-rm /home/alarm/alarmpi-user.sh
+sudo rm /home/alarm/alarmpi-user.sh
 sed -i -E 's#(ExecStart=.*)#\1 -l /var/log/klipper/klippy.log#' /lib/systemd/system/klipper.service
-pacman -S --noconfirm nginx
 pacman -U --noconfirm /root/mainsail-git*.pkg.*
 
 cp /usr/share/doc/mainsail/mainsail-nginx.conf /etc/nginx/
@@ -56,9 +55,12 @@ cp /usr/share/doc/moonraker/moonraker-klipper.cfg /etc/klipper/
 cat >/etc/klipper/klipper.cfg <<-EOF
 	# put your configuration in printer.cfg and leave this file alone
 	[include moonraker-klipper.cfg]
-	[include mainsail.cfg]
+	[include mainsail-klipper.cfg]
 	[include printer.cfg]
 EOF
+
+ln -s /usr/share/klipper/examples /usr/lib/klipper/config
+ln -s /usr/share/doc/klipper /usr/lib/klipper/docs
 
 systemctl enable klipper
 systemctl enable moonraker

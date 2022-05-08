@@ -12,12 +12,12 @@ CACHE="${3:-cache}"
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
 
-if [ ! -x alarmpi-secrets.sh ]; then
-  echo "Create alarmpi-secrets.sh to set WIFI_SSID and WIFI_PASSWD"
+if [ ! -x user/secrets.sh ]; then
+  echo "Create user/secrets.sh to set WIFI_SSID and WIFI_PASSWD"
   exit 1
 fi
 
-. ./alarmpi-secrets.sh
+. user/secrets.sh
 
 # K,M,G -> *1024; KB,MB,GB -> *1000
 imgsize=2GB
@@ -129,16 +129,32 @@ sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
 
 # mainsail fails to build in ARM environment but as it is not architecture
 # dependent, we build it on the host using Docker
-docker build -t arch-makepkg docker-env
+docker build -t arch-build docker-env
 [ -d mainsail-build ] || mkdir mainsail-build
-docker run -it --rm -v "$(pwd)/mainsail-build:/build/" -v "$CACHE:/var/cache/pacman" arch /build-mainsail.sh
+docker run -it --rm \
+  -v "$(pwd)/mainsail-build:/build/" \
+  -v "$(pwd)/$CACHE:/var/cache/pacman" \
+  -v "$(pwd)/docker-env/build-mainsail.sh:/build-mainsail.sh" \
+  arch-build \
+  /build-mainsail.sh
+
 sudo mv mainsail-build/mainsail-git*.pkg.* $DST/root/
 
 sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
 sudo cp alarmpi-setup.sh "$DST/"
 sudo chroot "$DST" /alarmpi-setup.sh
 sudo rm "$DST/alarmpi-setup.sh"
-sudo cp -r config_user/* "$DST/etc/"
+
+sudo cp -r files/* "$DST/"
+sudo cp -r user/files/* "$DST/"
+for script in user/scripts/*; do
+  if [ -f "$script" -a -x "$script" ]; then
+    sudo cp "$script" "$DST/user-script.sh"
+    sudo chroot "$DST" /user-script.sh
+  fi
+done
+sudo rm "$DST/user-script.sh" || true
+
 sudo chroot "$DST" chown -R klipper:klipper /etc/klipper
 
 sudo fuser -k "$DST" || true
