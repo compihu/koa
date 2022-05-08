@@ -19,7 +19,8 @@ fi
 
 . ./alarmpi-secrets.sh
 
-imgsize_mb=2000
+# K,M,G -> *1024; KB,MB,GB -> *1000
+imgsize=2GB
 
 if [ ! -d "$DST" ]; then mkdir "$DST"; fi
 
@@ -51,7 +52,7 @@ if [ $imgmd5 != $upsmd5 ]; then
 fi
 
 if [ -f "$IMG" ]; then rm "$IMG"; fi
-truncate -s 2000MB "$IMG"
+truncate -s ${imgsize} "$IMG"
 parted "$IMG" -s -- mklabel msdos \
   mkpart primary fat16 1MiB 200Mib \
   mkpart primary btrfs 200Mib 100%
@@ -100,6 +101,7 @@ sudo tee "$DST/etc/systemd/network/wlan.network" >/dev/null <<-EOF
 
 	[Network]
 	DHCP=ipv4
+	UseDomains=true
 EOF
 
 sudo tee "$DST/etc/wpa_supplicant/wpa_supplicant-wlan0.conf" >/dev/null <<-EOF
@@ -124,11 +126,20 @@ sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
   "$DST/etc/locale.gen"
 
 [ -d "$CACHE" ] || mkdir "$CACHE"
-sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
 
+# mainsail fails to build in ARM environment but as it is not architecture
+# dependent, we build it on the host using Docker
+docker build -t arch-makepkg docker-env
+[ -d mainsail-build ] || mkdir mainsail-build
+docker run -it --rm -v "$(pwd)/mainsail-build:/build/" -v "$CACHE:/var/cache/pacman" arch /build-mainsail.sh
+sudo mv mainsail-build/mainsail-git*.pkg.* $DST/root/
+
+sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
 sudo cp alarmpi-setup.sh "$DST/"
 sudo chroot "$DST" /alarmpi-setup.sh
 sudo rm "$DST/alarmpi-setup.sh"
+sudo cp -r config_user/* "$DST/etc/"
+sudo chroot "$DST" chown -R klipper:klipper /etc/klipper
 
 sudo fuser -k "$DST" || true
 
