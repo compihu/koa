@@ -45,7 +45,7 @@ cat >/home/alarm/alarmpi-user.sh <<-EOF
 EOF
 chmod a+x /home/alarm/alarmpi-user.sh
 su -l -c /home/alarm/alarmpi-user.sh alarm
-sudo rm /home/alarm/alarmpi-user.sh
+rm /home/alarm/alarmpi-user.sh
 sed -i -E 's#(ExecStart=.*)#\1 -l /var/log/klipper/klippy.log#' /lib/systemd/system/klipper.service
 pacman -U --noconfirm /root/mainsail-git*.pkg.*
 

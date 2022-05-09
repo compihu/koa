@@ -1,11 +1,6 @@
 #!/bin/bash
 set -ex
 
-#if [ $(id -u) != 0 ]; then
-#  echo "This script must be run as root!"
-#  exit false
-#fi
-
 IMG="${1:-alarmpi.img}"
 DST="${2:-alarmpi}"
 CACHE="${3:-cache}"
@@ -62,7 +57,7 @@ parts[0]=/dev/mapper/${parts[0]}
 parts[1]=/dev/mapper/${parts[1]}
 
 sudo mkfs.msdos ${parts[0]}
-sudo mkfs.btrfs ${parts[1]}
+sudo mkfs.btrfs -f ${parts[1]}
 
 sudo mount ${parts[1]} "$DST" -ocompress=zstd:15
 sudo btrfs sub cre "$DST/@arch_root"
@@ -131,12 +126,13 @@ sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
 # dependent, we build it on the host using Docker
 docker build -t arch-build docker-env
 [ -d mainsail-build ] || mkdir mainsail-build
+chmod 777 mainsail-build
 docker run -it --rm \
   -v "$(pwd)/mainsail-build:/build/" \
   -v "$(pwd)/$CACHE:/var/cache/pacman" \
-  -v "$(pwd)/docker-env/build-mainsail.sh:/build-mainsail.sh" \
+  -v "$(pwd)/docker-env:/env" \
   arch-build \
-  /build-mainsail.sh
+  /env/build-mainsail.sh
 
 sudo mv mainsail-build/mainsail-git*.pkg.* $DST/root/
 
@@ -156,6 +152,7 @@ done
 sudo rm "$DST/user-script.sh" || true
 
 sudo chroot "$DST" chown -R klipper:klipper /etc/klipper
+sudo chown -R $(id -u):$(id -g) "$CACHE"
 
 sudo fuser -k "$DST" || true
 
