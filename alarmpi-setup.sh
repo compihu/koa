@@ -39,6 +39,7 @@ cat >/home/alarm/alarmpi-user.sh <<-EOF
 	#!/usr/bin/bash
 	set -ex
 
+	yay -S --noconfirm --removemake pigpio
 	yay -S --noconfirm --removemake --mflags --nocheck klipper-py3-git
 	yay -S --noconfirm --removemake moonraker-git
 	rm -rf .cache/yay/*

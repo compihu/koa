@@ -78,6 +78,7 @@ sudo tee -a "$DST/boot/config.txt" >/dev/null <<-EOF
 	[all]
 	gpu_mem=16
 	enable_uart=1
+	dtparam=spi=on
 EOF
 
 for d in dev run proc sys; do sudo mount --bind /$d "$DST/$d"; done
