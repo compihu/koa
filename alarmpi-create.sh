@@ -7,6 +7,12 @@ CACHE="${3:-cache}"
 BUILD="${4:-build}"
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
+QEMU="/usr/local/bin/qemu-arm-static"
+
+if [ ! which qemu-arm-static ]; then
+  echo "qemu-arm-static binary cannot be found on PATH, giving up!"
+  exit 1
+fi
 
 if [ ! -x user/secrets.sh ]; then
   echo "Create user/secrets.sh to set WIFI_SSID and WIFI_PASSWD"
@@ -34,7 +40,6 @@ docker run -it --rm \
   -v "$(pwd)/docker-env/:/env" \
   arch-build \
   /env/orchestrate.sh
-
 
 if [ ! -d "$DST" ]; then mkdir "$DST"; fi
 
@@ -87,6 +92,7 @@ sudo mkdir "$DST"/boot
 sudo mount ${parts[0]} "$DST"/boot
 
 sudo bsdtar -xpf ArchLinuxARM-rpi-armv7-latest.tar.gz -C "$DST"
+sudo cp "$(which qemu-arm-static)" "$DST/usr/local/bin/"
 sudo sed -i -e 's/rw/rootflags=compress=zstd:15,subvol=@arch_root,relatime rw/' \
   -e 's/ console=serial0,115200//' \
   -e 's/ kgdboc=serial0,115200//' \
@@ -147,7 +153,7 @@ sudo mount --bind "$BUILD" "$DST/build"
 sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
 sudo cp alarmpi-setup.sh "$DST/"
 cp klipper_rpi.config "$BUILD/"
-sudo chroot "$DST" /alarmpi-setup.sh
+sudo chroot "$DST" "$QEMU" /bin/bash -c /alarmpi-setup.sh
 sudo rm "$DST/alarmpi-setup.sh"
 
 sudo cp -r files/* "$DST/"
@@ -155,12 +161,12 @@ sudo cp -r user/files/* "$DST/"
 for script in user/scripts/*; do
   if [ -f "$script" -a -x "$script" ]; then
     sudo cp "$script" "$DST/user-script.sh"
-    sudo chroot "$DST" /user-script.sh
+    sudo chroot "$DST" "$QEMU" /bin/bash -c /user-script.sh
   fi
 done
 sudo rm "$DST/user-script.sh" || true
 
-sudo chroot "$DST" chown -R klipper:klipper /etc/klipper
+sudo chroot "$DST" "$QEMU" /usr/bin/chown -R klipper:klipper /etc/klipper
 sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILD"
 
 sudo fuser -k "$DST" || true
