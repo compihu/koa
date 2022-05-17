@@ -4,6 +4,7 @@ set -ex
 IMG="${1:-alarmpi.img}"
 DST="${2:-alarmpi}"
 CACHE="${3:-cache}"
+BUILD="${4:-build}"
 
 if [ ! -d "$DST" ]; then mkdir "$DST"; fi
 
@@ -17,6 +18,7 @@ fi
 
 sudo mount ${parts[1]} "$DST" -ocompress=zstd:15,subvol=@arch_root
 sudo mount ${parts[0]} "$DST"/boot
+sudo mount --bind "$BUILD" "$DST/build"
 sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
 for d in dev run proc sys; do sudo mount --bind /$d "$DST"/$d; done
 [ -d /run/systemd/resolve/ ] || sudo mkdir -p /run/systemd/resolve

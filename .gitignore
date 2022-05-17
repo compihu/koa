@@ -1,6 +1,7 @@
 /alarmpi/
 /cache/
-/mainsail-build/
+/build/
+/tmp/
 /*.img*
 /ArchLinuxARM-rpi-*
 /.vscode/

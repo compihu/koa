@@ -4,6 +4,7 @@ set -ex
 IMG="${1:-alarmpi.img}"
 DST="${2:-alarmpi}"
 CACHE="${3:-cache}"
+BUILD="${4:-build}"
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
 
@@ -15,7 +16,25 @@ fi
 . user/secrets.sh
 
 # K,M,G -> *1024; KB,MB,GB -> *1000
-imgsize=2GB
+imgsize=2500M
+
+
+# building whatever we can in docker first
+if [ ! -f user/mcu.config ]; then
+  echo "Create user/mcu.config for compiling MCU firmware"
+  exit 1
+fi
+[ -d "$BUILD" ] || mkdir "$BUILD"
+cp user/mcu.config "$BUILD/"
+docker build -t arch-build docker-env
+#find "$BUILD" -type d -exec sudo chmod 777 {} \;
+docker run -it --rm \
+  -v "$(pwd)/$BUILD/:/build/" \
+  -v "$(pwd)/$CACHE/:/var/cache/pacman" \
+  -v "$(pwd)/docker-env/:/env" \
+  arch-build \
+  /env/orchestrate.sh
+
 
 if [ ! -d "$DST" ]; then mkdir "$DST"; fi
 
@@ -49,8 +68,8 @@ fi
 if [ -f "$IMG" ]; then rm "$IMG"; fi
 truncate -s ${imgsize} "$IMG"
 parted "$IMG" -s -- mklabel msdos \
-  mkpart primary fat16 1MiB 200Mib \
-  mkpart primary btrfs 200Mib 100%
+  mkpart primary fat16 1MiB 100Mib \
+  mkpart primary btrfs 100Mib 100%
 
 parts=( $(sudo kpartx -av "$IMG"|cut -f3 -d ' ') )
 parts[0]=/dev/mapper/${parts[0]}
@@ -123,22 +142,11 @@ sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
 
 [ -d "$CACHE" ] || mkdir "$CACHE"
 
-# mainsail fails to build in ARM environment but as it is not architecture
-# dependent, we build it on the host using Docker
-docker build -t arch-build docker-env
-[ -d mainsail-build ] || mkdir mainsail-build
-chmod 777 mainsail-build
-docker run -it --rm \
-  -v "$(pwd)/mainsail-build:/build/" \
-  -v "$(pwd)/$CACHE:/var/cache/pacman" \
-  -v "$(pwd)/docker-env:/env" \
-  arch-build \
-  /env/build-mainsail.sh
-
-sudo mv mainsail-build/mainsail-git*.pkg.* $DST/root/
-
+sudo mkdir "$DST/build"
+sudo mount --bind "$BUILD" "$DST/build"
 sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
 sudo cp alarmpi-setup.sh "$DST/"
+cp klipper_rpi.config "$BUILD/"
 sudo chroot "$DST" /alarmpi-setup.sh
 sudo rm "$DST/alarmpi-setup.sh"
 
@@ -153,7 +161,7 @@ done
 sudo rm "$DST/user-script.sh" || true
 
 sudo chroot "$DST" chown -R klipper:klipper /etc/klipper
-sudo chown -R $(id -u):$(id -g) "$CACHE"
+sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILD"
 
 sudo fuser -k "$DST" || true
 
