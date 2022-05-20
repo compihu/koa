@@ -73,8 +73,8 @@ fi
 if [ -f "$IMG" ]; then rm "$IMG"; fi
 truncate -s ${imgsize} "$IMG"
 parted "$IMG" -s -- mklabel msdos \
-  mkpart primary fat16 1MiB 100Mib \
-  mkpart primary btrfs 100Mib 100%
+  mkpart primary fat16 1MiB 150Mib \
+  mkpart primary btrfs 150Mib 100%
 
 parts=( $(sudo kpartx -av "$IMG"|cut -f3 -d ' ') )
 parts[0]=/dev/mapper/${parts[0]}
@@ -91,7 +91,7 @@ sudo mount ${parts[1]} "$DST" -ocompress=zstd:15,subvol=@arch_root
 sudo mkdir "$DST"/boot
 sudo mount ${parts[0]} "$DST"/boot
 
-sudo bsdtar -xpf ArchLinuxARM-rpi-armv7-latest.tar.gz -C "$DST"
+sudo bsdtar -xpf "$ARCHIVE" -C "$DST"
 sudo cp "$(which qemu-arm-static)" "$DST/usr/local/bin/"
 sudo sed -i -e 's/rw/rootflags=compress=zstd:15,subvol=@arch_root,relatime rw/' \
   -e 's/ console=serial0,115200//' \

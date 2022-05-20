@@ -1,6 +1,8 @@
 #!/usr/bin/bash
 set -ex
 
+AH=yay
+
 pacman-key --init
 pacman-key --populate archlinuxarm
 
@@ -10,16 +12,16 @@ pacman --noconfirm -Sy
 pacman --noconfirm -S btrfs-progs
 pacman --noconfirm -Su
 
-pacman --noconfirm -S etckeeper git
-git config --global init.defaultBranch master
-etckeeper init
-git -C /etc config user.name "EtcKeeper"
-git -C /etc config user.email "root@alarmpi"
-etckeeper commit -m "Initial commit"
+pacman --noconfirm -S git
+# git config --global init.defaultBranch master
+# etckeeper init
+# git -C /etc config user.name "EtcKeeper"
+# git -C /etc config user.email "root@alarmpi"
+# etckeeper commit -m "Initial commit"
 
-pacman --noconfirm -S vim sudo base-devel usbutils nginx polkit v4l-utils
+pacman --noconfirm -S vim sudo base-devel usbutils nginx polkit v4l-utils parted
 # for development purposes
-pacman --noconfirm -S mc screen pv man-db parted bash-completion
+pacman --noconfirm -S mc screen pv man-db bash-completion
 echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' >/etc/sudoers.d/wheel-nopasswd
 usermod -aG wheel alarm
 
@@ -29,12 +31,12 @@ systemctl enable systemd-networkd
 sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
 
 cd /root
-git clone https://aur.archlinux.org/yay-bin.git
-cd yay-bin
+git clone https://aur.archlinux.org/$AH-bin.git
+cd $AH-bin
 env EUID=1000 makepkg
-pacman --noconfirm -U yay-bin-*.pkg.*
+pacman --noconfirm -U $AH-bin-*.pkg.*
 cd /root
-rm -rf yay-bin
+rm -rf $AH-bin
 
 # klipper optional dependencies
 pacman --noconfirm -S python-numpy python-matplotlib
@@ -43,10 +45,10 @@ cat >/home/alarm/alarmpi-user.sh <<-EOF
 	#!/usr/bin/bash
 	set -ex
 
-	yay -S --builddir /build --noconfirm --removemake --norebuild --mflags --nocheck klipper-py3-git
-	yay -S --builddir /build --noconfirm --removemake --norebuild moonraker-git
-	yay -S --builddir /build --noconfirm --removemake --norebuild mjpg-streamer ustreamer
-	#yay -S --builddir /build --noconfirm --removemake --norebuild mainsail-git
+	$AH -S --builddir /build --noconfirm --removemake --norebuild --mflags --nocheck klipper-py3-git
+	$AH -S --builddir /build --noconfirm --removemake --norebuild moonraker-git
+	$AH -S --builddir /build --noconfirm --removemake --norebuild mjpg-streamer ustreamer
+	#$AH -S --builddir /build --noconfirm --removemake --norebuild mainsail-git
 EOF
 chmod a+x /home/alarm/alarmpi-user.sh
 chown -R alarm:alarm /build/*
@@ -116,12 +118,6 @@ cp /usr/share/doc/mainsail/mainsail-klipper.cfg /etc/klipper/
 cp /usr/share/doc/fluidd/fluidd-nginx.conf /etc/nginx/
 cp /usr/share/doc/fluidd/fluidd-klipper.cfg /etc/klipper/
 cp /usr/share/doc/moonraker/moonraker-klipper.cfg /etc/klipper/
-cat >/etc/klipper/klipper.cfg <<-EOF
-	# put your configuration in printer.cfg and leave this file alone
-	[include moonraker-klipper.cfg]
-	[include mainsail-klipper.cfg]
-	[include printer.cfg]
-EOF
 
 ln -s /usr/share/klipper/examples /usr/lib/klipper/config
 ln -s /usr/share/doc/klipper /usr/lib/klipper/docs
