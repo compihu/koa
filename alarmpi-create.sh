@@ -8,9 +8,18 @@ BUILD="${4:-build}"
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
 QEMU="/usr/local/bin/qemu-arm-static"
+# K,M,G -> *1024; KB,MB,GB -> *1000
+imgsize=2500M
 
-if [ ! which qemu-arm-static ]; then
+
+qemu_local=$(which qemu-arm-static 2>/dev/null || true)
+if [ -z "$qemu_local" ]; then
   echo "qemu-arm-static binary cannot be found on PATH, giving up!"
+  exit 1
+fi
+
+if [ ! -f user/mcu.config ]; then
+  echo "Create user/mcu.config for compiling MCU firmware"
   exit 1
 fi
 
@@ -21,28 +30,10 @@ fi
 
 . user/secrets.sh
 
-# K,M,G -> *1024; KB,MB,GB -> *1000
-imgsize=2500M
-
-
-# building whatever we can in docker first
-if [ ! -f user/mcu.config ]; then
-  echo "Create user/mcu.config for compiling MCU firmware"
-  exit 1
-fi
-[ -d "$BUILD" ] || mkdir "$BUILD"
-cp user/mcu.config "$BUILD/"
-docker build -t arch-build docker-env
-#find "$BUILD" -type d -exec sudo chmod 777 {} \;
-docker run -it --rm \
-  -v "$(pwd)/$BUILD/:/build/" \
-  -v "$(pwd)/$CACHE/:/var/cache/pacman" \
-  -v "$(pwd)/docker-env/:/env" \
-  arch-build \
-  /env/orchestrate.sh
-
 if [ ! -d "$DST" ]; then mkdir "$DST"; fi
 
+
+# verifying and downloading the tarball if necessary
 unset tgz_ok
 unset downloaded
 
@@ -70,6 +61,8 @@ if [ $imgmd5 != $upsmd5 ]; then
   exit false
 fi
 
+
+# Creating the image file, partition and mount it
 if [ -f "$IMG" ]; then rm "$IMG"; fi
 truncate -s ${imgsize} "$IMG"
 parted "$IMG" -s -- mklabel msdos \
@@ -91,25 +84,18 @@ sudo mount ${parts[1]} "$DST" -ocompress=zstd:15,subvol=@arch_root
 sudo mkdir "$DST"/boot
 sudo mount ${parts[0]} "$DST"/boot
 
+
+# Extracting the tarball and preparing chroot
 sudo bsdtar -xpf "$ARCHIVE" -C "$DST"
-sudo cp "$(which qemu-arm-static)" "$DST/usr/local/bin/"
-sudo sed -i -e 's/rw/rootflags=compress=zstd:15,subvol=@arch_root,relatime rw/' \
-  -e 's/ console=serial0,115200//' \
-  -e 's/ kgdboc=serial0,115200//' \
-  "$DST/boot/cmdline.txt"
-
-sudo tee -a "$DST/boot/config.txt" >/dev/null <<-EOF
-
-	[all]
-	gpu_mem=16
-	enable_uart=1
-	dtparam=spi=on
-EOF
+sudo cp "$qemu_local" "$DST/usr/local/bin/"
 
 for d in dev run proc sys; do sudo mount --bind /$d "$DST/$d"; done
 
 if [ ! -d /run/systemd/resolve/ ]; then sudo mkdir -p /run/systemd/resolve; fi
 if [ ! -f /run/systemd/resolve/resolv.conf ]; then sudo cp -L /etc/resolv.conf /run/systemd/resolve/; fi
+
+USRID=$(cat "$DST/etc/passwd"|grep ^alarm | cut -d: -f3)
+GRPID=$(cat "$DST/etc/passwd"|grep ^alarm | cut -d: -f4)
 
 sudo mkdir "$DST/mnt/fsroot"
 sudo tee -a "$DST/etc/fstab" >/dev/null <<-EOF
@@ -147,24 +133,37 @@ sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
   "$DST/etc/locale.gen"
 
 [ -d "$CACHE" ] || mkdir "$CACHE"
+[ -d "$BUILD" ] || mkdir "$BUILD"
+
+# building whatever we can in docker first
+cp user/mcu.config "$BUILD/"
+docker build -t arch-build docker-env
+#find "$BUILD" -type d -exec sudo chmod 777 {} \;
+docker run -it --rm \
+  -v "$(pwd)/$BUILD/:/build/" \
+  -v "$(pwd)/$CACHE/:/var/cache/pacman" \
+  -v "$(pwd)/docker-env/:/env" \
+  arch-build \
+  /env/orchestrate.sh
 
 sudo mkdir "$DST/build"
 sudo mount --bind "$BUILD" "$DST/build"
 sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
 sudo cp alarmpi-setup.sh "$DST/"
 cp klipper_rpi.config "$BUILD/"
-sudo chroot "$DST" "$QEMU" /bin/bash -c /alarmpi-setup.sh
+sudo chroot "$DST" "$QEMU" /bin/bash -c /alarmpi-setup.sh $TRUSTED_NET
 sudo rm "$DST/alarmpi-setup.sh"
 
-sudo cp -r files/* "$DST/"
-sudo cp -r user/files/* "$DST/"
-for script in user/scripts/*; do
-  if [ -f "$script" -a -x "$script" ]; then
-    sudo cp "$script" "$DST/user-script.sh"
-    sudo chroot "$DST" "$QEMU" /bin/bash -c /user-script.sh
-  fi
-done
-sudo rm "$DST/user-script.sh" || true
+[ -d user/files ] && sudo cp -r user/files/* "$DST/"
+if [ -d user/scripts ]; then
+  for script in user/scripts/*; do
+    if [ -f "$script" -a -x "$script" ]; then
+      sudo cp "$script" "$DST/user-script.sh"
+      sudo chroot "$DST" "$QEMU" /bin/bash -c /user-script.sh
+    fi
+  done
+  sudo rm "$DST/user-script.sh" || true
+fi
 
 sudo chroot "$DST" "$QEMU" /usr/bin/chown -R klipper:klipper /etc/klipper
 sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILD"

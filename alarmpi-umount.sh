@@ -2,10 +2,11 @@
 set -ex
 
 IMG="${1:-alarmpi.img}"
-DST="${1:-alarmpi}"
+DST="${2:-alarmpi}"
 
 sudo fuser -k "$DST" || true
-
 sudo umount -R "$DST" || true
-sudo kpartx -d "$IMG"
+if [ ! -b "$IMG" ]; then
+  sudo kpartx -d "$IMG"
+fi
 
