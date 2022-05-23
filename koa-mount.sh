@@ -1,8 +1,8 @@
 #!/bin/bash
 set -ex
 
-IMG="${1:-alarmpi.img}"
-DST="${2:-alarmpi}"
+IMG="${1:-koa.img}"
+DST="${2:-koa}"
 CACHE="${3:-cache}"
 BUILD="${4:-build}"
 

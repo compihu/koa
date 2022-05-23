@@ -18,7 +18,7 @@ pacman --noconfirm -Su
 # git config --global init.defaultBranch master
 # etckeeper init
 # git -C /etc config user.name "EtcKeeper"
-# git -C /etc config user.email "root@alarmpi"
+# git -C /etc config user.email "root@koa"
 # etckeeper commit -m "Initial commit"
 
 pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
@@ -40,7 +40,7 @@ pacman --noconfirm -U $AH-bin-*.pkg.*
 cd /root
 rm -rf $AH-bin
 
-sed -i -e 's/rw/rootflags=compress=zstd:15,subvol=@arch_root,relatime rw/' \
+sed -i -e 's/rw/rootflags=compress=zstd:15,subvol=@koa_root,relatime rw/' \
   -e 's/ console=serial0,115200//' \
   -e 's/ kgdboc=serial0,115200//' \
   "/boot/cmdline.txt"
@@ -56,7 +56,7 @@ EOF
 # klipper optional dependencies
 pacman --noconfirm -S python-numpy python-matplotlib
 
-cat >/home/alarm/alarmpi-user.sh <<-EOF
+cat >/home/alarm/koa-user.sh <<-EOF
 	#!/usr/bin/bash
 	set -ex
 
@@ -64,10 +64,10 @@ cat >/home/alarm/alarmpi-user.sh <<-EOF
 	$AH -S --builddir /build --noconfirm --removemake --norebuild moonraker-git
 	$AH -S --builddir /build --noconfirm --removemake --norebuild mjpg-streamer ustreamer
 EOF
-chmod a+x /home/alarm/alarmpi-user.sh
+chmod a+x /home/alarm/koa-user.sh
 chown -R alarm:alarm /build/*
-su -l -c /home/alarm/alarmpi-user.sh alarm
-rm /home/alarm/alarmpi-user.sh
+su -l -c /home/alarm/koa-user.sh alarm
+rm /home/alarm/koa-user.sh
 sed -E 's#(ExecStart=.*)#\1 -l /var/log/klipper/klippy.log#' /lib/systemd/system/klipper.service >/etc/systemd/system/klipper.service
 
 pacman -U --noconfirm $(ls -t /build/mainsail-git/*-any.pkg.tar.* | head -n1)

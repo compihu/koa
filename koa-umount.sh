@@ -1,8 +1,8 @@
 #!/bin/bash
 set -ex
 
-IMG="${1:-alarmpi.img}"
-DST="${2:-alarmpi}"
+IMG="${1:-koa.img}"
+DST="${2:-koa}"
 
 sudo fuser -k "$DST" || true
 sudo umount -R "$DST" || true

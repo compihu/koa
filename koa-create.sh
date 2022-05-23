@@ -1,8 +1,8 @@
 #!/bin/bash
 set -ex
 
-IMG="${1:-alarmpi.img}"
-DST="${2:-alarmpi}"
+IMG="${1:-koa.img}"
+DST="${2:-koa}"
 CACHE="${3:-cache}"
 BUILD="${4:-build}"
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
@@ -73,14 +73,14 @@ parts=( $(sudo kpartx -av "$IMG"|cut -f3 -d ' ') )
 parts[0]=/dev/mapper/${parts[0]}
 parts[1]=/dev/mapper/${parts[1]}
 
-sudo mkfs.msdos ${parts[0]}
-sudo mkfs.btrfs -f ${parts[1]}
+sudo mkfs.msdos -n KOA-BOOT ${parts[0]}
+sudo mkfs.btrfs -f -L koa-root ${parts[1]}
 
 sudo mount ${parts[1]} "$DST" -ocompress=zstd:15
-sudo btrfs sub cre "$DST/@arch_root"
-sudo btrfs property set "$DST/@arch_root" compression zstd
+sudo btrfs sub cre "$DST/@koa_root"
+sudo btrfs property set "$DST/@koa_root" compression zstd
 sudo umount "$DST"
-sudo mount ${parts[1]} "$DST" -ocompress=zstd:15,subvol=@arch_root
+sudo mount ${parts[1]} "$DST" -ocompress=zstd:15,subvol=@koa_root
 sudo mkdir "$DST"/boot
 sudo mount ${parts[0]} "$DST"/boot
 
@@ -149,10 +149,10 @@ docker run -it --rm \
 sudo mkdir "$DST/build"
 sudo mount --bind "$BUILD" "$DST/build"
 sudo mount --bind "$CACHE" "$DST/var/cache/pacman"
-sudo cp alarmpi-setup.sh "$DST/"
+sudo cp koa-setup.sh "$DST/"
 cp klipper_rpi.config "$BUILD/"
-sudo chroot "$DST" "$QEMU" /bin/bash -c /alarmpi-setup.sh $TRUSTED_NET
-sudo rm "$DST/alarmpi-setup.sh"
+sudo chroot "$DST" "$QEMU" /bin/bash -c /koa-setup.sh $TRUSTED_NET
+sudo rm "$DST/koa-setup.sh"
 
 [ -d user/files ] && sudo cp -r user/files/* "$DST/"
 if [ -d user/scripts ]; then
@@ -172,6 +172,6 @@ sudo fuser -k "$DST" || true
 
 sudo umount -R "$DST"
 sudo mount ${parts[1]} "$DST" -ocompress=zstd:15
-sudo btrfs sub snap "$DST/@arch_root" "$DST/@arch_root.inst"
+sudo btrfs sub snap "$DST/@koa_root" "$DST/@koa_root.inst"
 sudo umount "$DST"
 sudo kpartx -d "$IMG"
