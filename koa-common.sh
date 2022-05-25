@@ -1,5 +1,6 @@
 #!/bin/bash
 set -ex
+
 function parse_params
 {
   IMG="koa.img"

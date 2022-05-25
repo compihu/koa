@@ -31,8 +31,8 @@ check()
 }
 
 
-
 check_var () { if [ -z ${!1} ]; then echo "$1 has no value!"; exit 1; fi; }
+
 
 check_vars()
 {
@@ -195,7 +195,7 @@ sudo mount --bind "$BUILD" "$WD/build"
 sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
 sudo cp koa-setup.sh "$WD/"
 cp klipper_rpi.config "$BUILD/"
-sudo chroot "$WD" "$QEMU" /bin/bash -c /koa-setup.sh $TRUSTED_NET
+sudo chroot "$WD" "$QEMU" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
 sudo rm "$WD/koa-setup.sh"
 
 [ -d user/files ] && sudo cp -r user/files/* "$WD/"

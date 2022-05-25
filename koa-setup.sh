@@ -62,7 +62,7 @@ cat >/home/alarm/koa-user.sh <<-EOF
 
 	$AH -S --builddir /build --noconfirm --removemake --norebuild --mflags --nocheck klipper-py3-git
 	$AH -S --builddir /build --noconfirm --removemake --norebuild moonraker-git
-	$AH -S --builddir /build --noconfirm --removemake --norebuild mjpg-streamer ustreamer
+	$AH -S --builddir /build --noconfirm --removemake --norebuild ustreamer
 EOF
 chmod a+x /home/alarm/koa-user.sh
 chown -R alarm:alarm /build/*
@@ -191,7 +191,8 @@ cat >>/etc/nginx/mainsail-nginx.conf <<-EOF
 EOF
 tail -n +$ln /usr/share/doc/mainsail/mainsail-nginx.conf >>/etc/nginx/mainsail-nginx.conf
 
-cp /usr/share/doc/mainsail/mainsail-klipper.cfg /etc/klipper/
+sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
+  /usr/share/doc/mainsail/mainsail-klipper.cfg >/etc/klipper/mainsail-klipper.cfg
 
 
 # Copying / editing fluidd config files
@@ -217,20 +218,30 @@ cat >>/etc/nginx/fluidd-nginx.conf <<-EOF
 EOF
 tail -n +$ln /usr/share/doc/fluidd/fluidd-nginx.conf >>/etc/nginx/fluidd-nginx.conf
 
-cp /usr/share/doc/fluidd/fluidd-klipper.cfg /etc/klipper/
+sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
+  /usr/share/doc/fluidd/fluidd-klipper.cfg >/etc/klipper/fluidd-klipper.cfg
 
 
 # Copying moonraker configs and creating symlinks (instead of editing them)
-cp /usr/share/doc/moonraker/moonraker-klipper.cfg /etc/klipper/
+sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
+    /usr/share/doc/moonraker/moonraker-klipper.cfg >/etc/klipper/moonraker-klipper.cfg
+mkdir -p /var/cache/klipper/gcode
+chown -R klipper:klipper /var/cache/klipper
+
+# TODO: is it still needed?
 ln -s /usr/share/klipper/examples /usr/lib/klipper/config
 ln -s /usr/share/doc/klipper /usr/lib/klipper/docs
-# TODO: mainsail.conf editing
+
 sed -i -e "s/^\(host:\).*/\1 0.0.0.0/" \
     -e "s/^#\(\[authorization\]\)/\1/" \
     -e "s%^#\?\(trusted_clients:\)%\1\n  $TRUSTED_NET%" \
     -e "s%^#\?\(cors_domains:\)%\1\n  *.local\n  *://.app.fluidd.xyz%" \
     -e "s%^#\?\(database_path:\).*%\1 /var/lib/moonraker/db%" \
     /etc/klipper/moonraker.conf
+mkdir /var/lib/moonraker
+chown klipper:klipper /var/lib/moonraker
+
+
 
 ln -s ${DEFAULT_UI}-nginx.conf /etc/nginx/webui.conf
 ln -s ${DEFAULT_UI}-klipper.cfg /etc/klipper/webui-klipper.cfg

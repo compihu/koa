@@ -16,6 +16,7 @@ else
 fi
 
 sudo mount ${parts[1]} "$WD" "-ocompress=zstd:15,subvol=${SUBVOL}"
+sudo mount ${parts[1]} "$WD/mnt/fs_root" "-osubvolid=0"
 sudo mount ${parts[0]} "$WD"/boot
 sudo mount --bind "$BUILD" "$WD/build"
 sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
