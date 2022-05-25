@@ -1,12 +1,12 @@
 #!/bin/bash
 set -ex
 
-IMG="${1:-koa.img}"
-DST="${2:-koa}"
+. ./koa-common.sh
 
-sudo fuser -k "$DST" || true
-sudo umount -R "$DST" || true
+parse_params $@
+
+sudo fuser -k "$WD" || true
+sudo umount -R "$WD" || true
 if [ ! -b "$IMG" ]; then
   sudo kpartx -d "$IMG"
 fi
-

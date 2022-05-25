@@ -225,7 +225,7 @@ cp /usr/share/doc/moonraker/moonraker-klipper.cfg /etc/klipper/
 ln -s /usr/share/klipper/examples /usr/lib/klipper/config
 ln -s /usr/share/doc/klipper /usr/lib/klipper/docs
 # TODO: mainsail.conf editing
-sed -i -e "s/^\(host:\)/\1 0.0.0.0/" \
+sed -i -e "s/^\(host:\).*/\1 0.0.0.0/" \
     -e "s/^#\(\[authorization\]\)/\1/" \
     -e "s%^#\?\(trusted_clients:\)%\1\n  $TRUSTED_NET%" \
     -e "s%^#\?\(cors_domains:\)%\1\n  *.local\n  *://.app.fluidd.xyz%" \
