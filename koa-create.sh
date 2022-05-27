@@ -3,6 +3,7 @@ set -ex
 
 . ./koa-common.sh
 
+
 check_bin()
 {
   local binary=$(which "$1"  2>/dev/null || true)
@@ -12,10 +13,10 @@ check_bin()
   fi
 }
 
+
 check()
 {
   check_bin qemu-arm-static
-  check_bin kpartx
   check_bin mkfs.msdos
   check_bin mkfs.btrfs
 
@@ -80,12 +81,11 @@ prepare_target()
   [ -f "${IMG}" ] && rm "${IMG}"
   truncate -s "${IMGSIZE}" "${IMG}"
   parted "${IMG}" -s -- mklabel msdos \
-    mkpart primary fat16 1MiB 150Mib \
-    mkpart primary btrfs 150Mib 100%
+    mkpart primary fat16 1MiB "${BOOTSIZE}" \
+    mkpart primary btrfs "${BOOTSIZE}" 100%
 
-  parts=( $(sudo kpartx -av "${IMG}"|cut -f3 -d ' ') )
-  parts[0]=/dev/mapper/${parts[0]}
-  parts[1]=/dev/mapper/${parts[1]}
+  loopdev=( $(sudo losetup --find --show --partscan "$IMG") )
+  parts=( "${loopdev}p1" "${loopdev}p2" )
 
   sudo mkfs.msdos -n KOA-BOOT ${parts[0]}
   sudo mkfs.btrfs -f -L koa-root ${parts[1]}
@@ -158,9 +158,9 @@ edit_configs()
 # building whatever we can in docker first
 prebuild_in_docker()
 {
-  cp user/mcu.config "$BUILD/"
   docker build -t arch-build docker-env
   #find "$BUILD" -type d -exec sudo chmod 777 {} \;
+  cp user/mcu.config "$BUILD/"
   docker run -it --rm \
     -v "$(pwd)/$BUILD/:/build/" \
     -v "$(pwd)/$CACHE/:/var/cache/pacman" \
@@ -216,4 +216,4 @@ sudo fuser -k "$WD" || true
 
 sudo btrfs sub snap "$WD/mnt/fs_root/$SUBVOL" "$WD/mnt/fs_root/$SUBVOL.inst"
 sudo umount -R "$WD"
-sudo kpartx -d "$IMG"
+sudo losetup -D "$IMG"

@@ -8,6 +8,7 @@ function parse_params
   CACHE="cache"
   BUILD="build"
   IMGSIZE="2500M"
+  BOOTSIZE="150MiB"
   SUBVOL="@koa_root"
 
   while [ $# != 0 ] ; do
@@ -24,12 +25,16 @@ function parse_params
         CACHE="$2"
         shift
         ;;
-      -b | --build )
+      -d | --build )
         BUILD="$2"
         shift
         ;;
       -s | --imgsize )
         IMGSIZE="$2"
+        shift
+        ;;
+      -b | --bootsize )
+        BOOTSIZE="$2"
         shift
         ;;
       -v | --subvolume )
