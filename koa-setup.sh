@@ -141,7 +141,7 @@ cat >/etc/nginx/mjpgstreamers.conf <<-EOF
 EOF
 
 # Klipper main configuration file
-cat >/etc/klipper/klipper.conf <<-EOF
+cat >/etc/klipper/klipper.cfg <<-EOF
 	# put your configuration in printer.cfg and leave this file alone
 	[include webui-klipper.cfg]
 	[include moonraker-klipper.cfg]
