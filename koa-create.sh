@@ -152,6 +152,8 @@ edit_configs()
     -e "s/#hu_HU.UTF-8/hu_HU.UTF-8/" \
     -e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
     "$WD/etc/locale.gen"
+
+  sudo sed -i -E 's/(^-?session\s+.*pam_systemd.so.*)/#\1/' "${WD}/etc/pam.d/system-login"
 }
 
 
