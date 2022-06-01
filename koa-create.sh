@@ -184,13 +184,14 @@ check
 for dir in "${WD}" "${BUILD}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; done
 
 . user/secrets.sh
-
 check_vars
+
+prebuild_in_docker
+
 get_tarball
 prepare_target
 
 edit_configs
-prebuild_in_docker
 
 sudo mkdir "$WD/build"
 sudo mount --bind "$BUILD" "$WD/build"
