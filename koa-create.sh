@@ -116,7 +116,31 @@ prepare_target()
 }
 
 
-edit_configs()
+install_essential()
+{
+  sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
+    -e "s/#hu_HU.UTF-8/hu_HU.UTF-8/" \
+    -e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
+    "${WD}/etc/locale.gen"
+
+  sudo chroot "$WD" "$QEMU" /bin/bash <<-EOF
+		set -ex
+		pacman-key --init
+		pacman-key --populate archlinuxarm
+
+		locale-gen
+
+		pacman --noconfirm -Sy
+		pacman --noconfirm -S btrfs-progs
+		pacman --noconfirm -Su
+
+		pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
+		# TODO: remove once development is finished
+		pacman --noconfirm -S mc screen pv man-db bash-completion parted
+	EOF
+}
+
+edit_system_configs()
 {
   sudo tee -a "$WD/etc/fstab" >/dev/null <<-EOF
 		/dev/mmcblk0p2 /mnt/fs_root btrfs defaults,compress=zstd:15,noatime 0 0
@@ -148,12 +172,22 @@ edit_configs()
 		}
 	EOF
 
-  sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
-    -e "s/#hu_HU.UTF-8/hu_HU.UTF-8/" \
-    -e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
-    "$WD/etc/locale.gen"
-
   sudo sed -i -E 's/(^-?session\s+.*pam_systemd.so.*)/#\1/' "${WD}/etc/pam.d/system-login"
+
+  sudo sed -i -e 's/rw/rootflags=compress=zstd:15,subvol=@koa_root,relatime rw/' \
+   -e 's/ console=serial0,115200//' \
+   -e 's/ kgdboc=serial0,115200//' \
+   "${WD}/boot/cmdline.txt"
+
+  sudo tee -a "${WD}/boot/config.txt" >/dev/null <<-EOF
+
+		[all]
+		gpu_mem=16
+		enable_uart=1
+		dtparam=spi=on
+	EOF
+
+  echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' | sudo tee "${WD}/etc/sudoers.d/wheel-nopasswd" >/dev/null
 }
 
 
@@ -172,6 +206,13 @@ prebuild_in_docker()
 }
 
 
+chown_inside()
+{
+  if [ ! -e "${WD}/$1" ]; then sudo mkdir -p "${WD}/$1"; fi
+  sudo chroot "$WD" "$QEMU" /bin/bash -c "/usr/bin/chown -R $2 $1"
+}
+
+
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
 QEMU="/usr/local/bin/qemu-arm-static"
@@ -186,16 +227,18 @@ for dir in "${WD}" "${BUILD}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; 
 . user/secrets.sh
 check_vars
 
-prebuild_in_docker
+#prebuild_in_docker
 
 get_tarball
 prepare_target
 
-edit_configs
+sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
+
+install_essential
+edit_system_configs
 
 sudo mkdir "$WD/build"
 sudo mount --bind "$BUILD" "$WD/build"
-sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
 sudo cp koa-setup.sh "$WD/"
 cp klipper_rpi.config "$BUILD/"
 sudo chroot "$WD" "$QEMU" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
@@ -210,6 +253,12 @@ if [ -d user/scripts ]; then
     fi
   done
   sudo rm "$WD/user-script.sh" || true
+fi
+
+if [ -d user/fileprops ]; then
+  while read line; do
+    chown_inside $line
+  done <user/fileprops
 fi
 
 sudo chroot "$WD" "$QEMU" /usr/bin/chown -R klipper:klipper /etc/klipper

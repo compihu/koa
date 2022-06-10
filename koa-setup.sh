@@ -5,15 +5,6 @@ AH=yay
 DEFAULT_UI=mainsail
 TRUSTED_NET="$1"
 
-pacman-key --init
-pacman-key --populate archlinuxarm
-
-locale-gen
-
-pacman --noconfirm -Sy
-pacman --noconfirm -S btrfs-progs
-pacman --noconfirm -Su
-
 # pacman --noconfirm -S etckeeper git
 # git config --global init.defaultBranch master
 # etckeeper init
@@ -21,10 +12,9 @@ pacman --noconfirm -Su
 # git -C /etc config user.email "root@koa"
 # etckeeper commit -m "Initial commit"
 
-pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
+# pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
 # for development purposes
-pacman --noconfirm -S mc screen pv man-db bash-completion parted
-echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' >/etc/sudoers.d/wheel-nopasswd
+# pacman --noconfirm -S mc screen pv man-db bash-completion parted
 usermod -aG wheel alarm
 
 systemctl enable wpa_supplicant@wlan0
@@ -39,19 +29,6 @@ env EUID=1000 makepkg
 pacman --noconfirm -U $AH-bin-*.pkg.*
 cd /root
 rm -rf $AH-bin
-
-sed -i -e 's/rw/rootflags=compress=zstd:15,subvol=@koa_root,relatime rw/' \
-  -e 's/ console=serial0,115200//' \
-  -e 's/ kgdboc=serial0,115200//' \
-  "/boot/cmdline.txt"
-
-tee -a "/boot/config.txt" >/dev/null <<-EOF
-
-	[all]
-	gpu_mem=16
-	enable_uart=1
-	dtparam=spi=on
-EOF
 
 # klipper optional dependencies
 pacman --noconfirm -S python-numpy python-matplotlib
@@ -68,7 +45,7 @@ chmod a+x /home/alarm/koa-user.sh
 chown -R alarm:alarm /build/*
 su -l -c /home/alarm/koa-user.sh alarm
 rm /home/alarm/koa-user.sh
-sed -E 's#(ExecStart=.*)#\1 -l /var/log/klipper/klippy.log#' /lib/systemd/system/klipper.service >/etc/systemd/system/klipper.service
+sed -E 's#(ExecStart=.*) /etc/klipper/klipper.cfg (.*)#\1 /etc/klipper/printer.cfg \2 -l /var/log/klipper/klippy.log\nNice=-5#' /lib/systemd/system/klipper.service >/etc/systemd/system/klipper.service
 
 pacman -U --noconfirm $(ls -t /build/mainsail-git/*-any.pkg.tar.* | head -n1)
 pacman -U --noconfirm $(ls -t /build/fluidd-git/*-any.pkg.tar.* | head -n1)
@@ -141,11 +118,14 @@ cat >/etc/nginx/mjpgstreamers.conf <<-EOF
 EOF
 
 # Klipper main configuration file
-cat >/etc/klipper/klipper.cfg <<-EOF
-	# put your configuration in printer.cfg and leave this file alone
+cat >/etc/klipper/printer.cfg <<-EOF
 	[include webui-klipper.cfg]
 	[include moonraker-klipper.cfg]
-	[include printer.cfg]
+
+	########################################
+	# Your printer configuration goes here #
+	########################################
+	
 EOF
 
 # copying / editing mainsail config files
@@ -199,20 +179,40 @@ sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
 ln=$(sed -n -e '/^\}$/=' /usr/share/doc/fluidd/fluidd-nginx.conf |tail -n1)
 head -n $(($ln - 1)) /usr/share/doc/fluidd/fluidd-nginx.conf >/etc/nginx/fluidd-nginx.conf
 cat >>/etc/nginx/fluidd-nginx.conf <<-EOF
-	
+
 	    location /webcam/ {
+	        postpone_output 0;
+	        proxy_buffering off;
+	        proxy_ignore_headers X-Accel-Buffering;
+	        access_log off;
+	        error_log off;
 	        proxy_pass http://mjpgstreamer1/;
 	    }
-	
-	    location /webcam2 {
+
+	    location /webcam2/ {
+	        postpone_output 0;
+	        proxy_buffering off;
+	        proxy_ignore_headers X-Accel-Buffering;
+	        access_log off;
+	        error_log off;
 	        proxy_pass http://mjpgstreamer2/;
 	    }
-	
-	    location /webca3/ {
+
+	    location /webcam3/ {
+	        postpone_output 0;
+	        proxy_buffering off;
+	        proxy_ignore_headers X-Accel-Buffering;
+	        access_log off;
+	        error_log off;
 	        proxy_pass http://mjpgstreamer3/;
 	    }
-	
+
 	    location /webcam4/ {
+	        postpone_output 0;
+	        proxy_buffering off;
+	        proxy_ignore_headers X-Accel-Buffering;
+	        access_log off;
+	        error_log off;
 	        proxy_pass http://mjpgstreamer4/;
 	    }
 EOF
@@ -272,6 +272,7 @@ cat >/etc/systemd/system/ustreamer@.service <<-EOF
 	Environment="SCRIPT_ARGS=%I"
 	User=klipper
 	ExecStart=/usr/bin/ustreamer --process-name-prefix ustreamer-%I --log-level 0 -d /dev/video%I --device-timeout=8 -m mjpeg -r 1920x1080 -f 30 -s 0.0.0.0 -p 808%I
+	Nice=10
 
 	[Install]
 	WantedBy=klipper.service
