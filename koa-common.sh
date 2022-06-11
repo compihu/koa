@@ -6,7 +6,7 @@ function parse_params
   IMG="koa.img"
   WD="koa"
   CACHE="cache"
-  BUILD="build"
+  BUILDDIR="build"
   IMGSIZE="2500M"
   BOOTSIZE="150MiB"
   SUBVOL="@koa_root"
@@ -25,8 +25,8 @@ function parse_params
         CACHE="$2"
         shift
         ;;
-      -d | --build )
-        BUILD="$2"
+      -d | --builddir )
+        BUILDDIR="$2"
         shift
         ;;
       -s | --imgsize )

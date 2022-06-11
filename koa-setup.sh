@@ -20,7 +20,8 @@ usermod -aG wheel alarm
 systemctl enable wpa_supplicant@wlan0
 systemctl enable systemd-networkd
 
-sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
+#sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
+sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
 
 cd /root
 git clone https://aur.archlinux.org/$AH-bin.git
@@ -50,16 +51,12 @@ sed -E 's#(ExecStart=.*) /etc/klipper/klipper.cfg (.*)#\1 /etc/klipper/printer.c
 pacman -U --noconfirm $(ls -t /build/mainsail-git/*-any.pkg.tar.* | head -n1)
 pacman -U --noconfirm $(ls -t /build/fluidd-git/*-any.pkg.tar.* | head -n1)
 
-cat >/var/lib/klipper/build_rpi_mcu.sh <<-EOF
-	#!/usr/bin/bash
+su -s /bin/bash -c /bin/bash <<-EOF
 	set -ex
 	cd /usr/lib/klipper
 	cp /build/klipper_rpi.config .config
 	make -j$(nproc)
 EOF
-chmod a+x /var/lib/klipper/build_rpi_mcu.sh
-su -l -s /bin/bash -c /var/lib/klipper/build_rpi_mcu.sh klipper
-rm /var/lib/klipper/build_rpi_mcu.sh
 
 pushd /var/lib/klipper/
 cd /usr/lib/klipper

@@ -1,7 +1,8 @@
 #!/bin/bash
 set -ex
 
-. ./koa-common.sh
+SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+. "${SCRIPTPATH}/koa-common.sh"
 
 
 check_bin()
@@ -195,10 +196,10 @@ edit_system_configs()
 prebuild_in_docker()
 {
   docker build -t arch-build docker-env
-  #find "$BUILD" -type d -exec sudo chmod 777 {} \;
-  cp user/mcu.config "$BUILD/"
+  #find "$BUILDDIR" -type d -exec sudo chmod 777 {} \;
+  cp user/mcu.config "$BUILDDIR/"
   docker run -it --rm \
-    -v "$(pwd)/$BUILD/:/build/" \
+    -v "$(pwd)/$BUILDDIR/:/build/" \
     -v "$(pwd)/$CACHE/:/var/cache/pacman" \
     -v "$(pwd)/docker-env/:/env" \
     arch-build \
@@ -222,12 +223,12 @@ parse_params $@
 
 check
 
-for dir in "${WD}" "${BUILD}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; done
+for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; done
 
 . user/secrets.sh
 check_vars
 
-#prebuild_in_docker
+prebuild_in_docker
 
 get_tarball
 prepare_target
@@ -238,9 +239,9 @@ install_essential
 edit_system_configs
 
 sudo mkdir "$WD/build"
-sudo mount --bind "$BUILD" "$WD/build"
+sudo mount --bind "$BUILDDIR" "$WD/build"
 sudo cp koa-setup.sh "$WD/"
-cp klipper_rpi.config "$BUILD/"
+cp klipper_rpi.config "$BUILDDIR/"
 sudo chroot "$WD" "$QEMU" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
 sudo rm "$WD/koa-setup.sh"
 
@@ -262,7 +263,7 @@ if [ -d user/fileprops ]; then
 fi
 
 sudo chroot "$WD" "$QEMU" /usr/bin/chown -R klipper:klipper /etc/klipper
-sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILD"
+sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
 
 sudo fuser -k "$WD" || true
 
