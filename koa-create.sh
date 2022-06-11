@@ -117,14 +117,14 @@ prepare_target()
 }
 
 
-install_essential()
+essential_setup()
 {
   sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
     -e "s/#hu_HU.UTF-8/hu_HU.UTF-8/" \
     -e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
     "${WD}/etc/locale.gen"
 
-  sudo chroot "$WD" "$QEMU" /bin/bash <<-EOF
+  sudo chroot "$WD" /bin/bash <<-EOF
 		set -ex
 		pacman-key --init
 		pacman-key --populate archlinuxarm
@@ -138,6 +138,8 @@ install_essential()
 		pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
 		# TODO: remove once development is finished
 		pacman --noconfirm -S mc screen pv man-db bash-completion parted
+
+		usermod -aG wheel alarm
 	EOF
 }
 
@@ -210,13 +212,12 @@ prebuild_in_docker()
 chown_inside()
 {
   if [ ! -e "${WD}/$1" ]; then sudo mkdir -p "${WD}/$1"; fi
-  sudo chroot "$WD" "$QEMU" /bin/bash -c "/usr/bin/chown -R $2 $1"
+  sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R $2 $1"
 }
 
 
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
-QEMU="/usr/local/bin/qemu-arm-static"
 # K,M,G -> *1024; KB,MB,GB -> *1000
 
 parse_params $@
@@ -235,14 +236,14 @@ prepare_target
 
 sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
 
-install_essential
+essential_setup
 edit_system_configs
 
 sudo mkdir "$WD/build"
 sudo mount --bind "$BUILDDIR" "$WD/build"
 sudo cp koa-setup.sh "$WD/"
 cp klipper_rpi.config "$BUILDDIR/"
-sudo chroot "$WD" "$QEMU" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
+sudo chroot "$WD" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
 sudo rm "$WD/koa-setup.sh"
 
 [ -d user/files ] && sudo cp -r user/files/* "$WD/"
@@ -250,7 +251,7 @@ if [ -d user/scripts ]; then
   for script in user/scripts/*; do
     if [ -f "$script" -a -x "$script" ]; then
       sudo cp "$script" "$WD/user-script.sh"
-      sudo chroot "$WD" "$QEMU" /bin/bash -c /user-script.sh
+      sudo chroot "$WD" /bin/bash -c /user-script.sh
     fi
   done
   sudo rm "$WD/user-script.sh" || true
@@ -262,7 +263,7 @@ if [ -d user/fileprops ]; then
   done <user/fileprops
 fi
 
-sudo chroot "$WD" "$QEMU" /usr/bin/chown -R klipper:klipper /etc/klipper
+sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper
 sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
 
 sudo fuser -k "$WD" || true

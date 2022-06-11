@@ -15,10 +15,6 @@ TRUSTED_NET="$1"
 # pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
 # for development purposes
 # pacman --noconfirm -S mc screen pv man-db bash-completion parted
-usermod -aG wheel alarm
-
-systemctl enable wpa_supplicant@wlan0
-systemctl enable systemd-networkd
 
 #sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
 sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
@@ -291,6 +287,9 @@ cat >/etc/systemd/system/webcamd.service <<-EOF
 	[Install]
 	WantedBy=multi-user.target
 EOF
+
+systemctl enable wpa_supplicant@wlan0
+systemctl enable systemd-networkd
 
 systemctl enable klipper.service
 systemctl enable klipper-mcu.service
