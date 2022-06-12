@@ -1,8 +1,8 @@
 #!/bin/bash
 set -ex
 
-SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-. "${SCRIPTPATH}/koa-common.sh"
+export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+. "${SCRIPTDIR}/koa-common.sh"
 
 
 check_bin()
@@ -17,16 +17,15 @@ check_bin()
 
 check()
 {
-  check_bin qemu-arm-static
   check_bin mkfs.msdos
   check_bin mkfs.btrfs
 
-  if [ ! -f user/mcu.config ]; then
+  if [ ! -f "${USERDIR}/mcu.config" ]; then
     echo "Create user/mcu.config for compiling MCU firmware"
     exit 1
   fi
 
-  if [ ! -x user/secrets.sh ]; then
+  if [ ! -x "${USERDIR}/secrets.sh" ]; then
     echo "Create user/secrets.sh to set WIFI_SSID and WIFI_PASSWD"
     exit 1
   fi
@@ -50,6 +49,7 @@ get_tarball()
   local tgz_ok
   local downloaded
 
+  pushd "${SCRIPTDIR}"
   if [ -f "$ARCHIVE.md5" ]; then
     rm "$ARCHIVE.md5"
   fi
@@ -71,8 +71,10 @@ get_tarball()
   imgmd5=$(md5sum "${ARCHIVE}"|cut -d ' ' -f1)
   if [ "${imgmd5}" != "${upsmd5}" ]; then
     echo "Image checksum failure, giving up!"
+    popd
     exit false
   fi
+  popd
 }
 
 
@@ -101,7 +103,7 @@ prepare_target()
   sudo mount ${parts[0]} "${WD}"/boot
 
   # Extracting the tarball and preparing the chroot
-  sudo bsdtar -xpf "${ARCHIVE}" -C "${WD}"
+  sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
   sudo cp $(which qemu-arm-static) "${WD}/usr/local/bin/"
 
   sudo mkdir "${WD}/mnt/fs_root"
@@ -197,15 +199,17 @@ edit_system_configs()
 # building whatever we can in docker first
 prebuild_in_docker()
 {
+  pushd "${SCRIPTDIR}"
   docker build -t arch-build docker-env
   #find "$BUILDDIR" -type d -exec sudo chmod 777 {} \;
-  cp user/mcu.config "$BUILDDIR/"
+  cp "${USERDIR}/mcu.config" "$BUILDDIR/"
   docker run -it --rm \
-    -v "$(pwd)/$BUILDDIR/:/build/" \
-    -v "$(pwd)/$CACHE/:/var/cache/pacman" \
-    -v "$(pwd)/docker-env/:/env" \
+    -v "${BUILDDIR}/:/build/" \
+    -v "${CACHE}/:/var/cache/pacman" \
+    -v "${SCRIPTDIR}/docker-env/:/env" \
     arch-build \
     /env/orchestrate.sh
+    popd
 }
 
 
@@ -226,7 +230,7 @@ check
 
 for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; done
 
-. user/secrets.sh
+. "${USERDIR}/secrets.sh"
 check_vars
 
 prebuild_in_docker
@@ -241,14 +245,14 @@ edit_system_configs
 
 sudo mkdir "$WD/build"
 sudo mount --bind "$BUILDDIR" "$WD/build"
-sudo cp koa-setup.sh "$WD/"
-cp klipper_rpi.config "$BUILDDIR/"
+sudo cp "${SCRIPTDIR}/koa-setup.sh" "$WD/"
+cp "${SCRIPTDIR}/klipper_rpi.config" "$BUILDDIR/"
 sudo chroot "$WD" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
 sudo rm "$WD/koa-setup.sh"
 
-[ -d user/files ] && sudo cp -r user/files/* "$WD/"
-if [ -d user/scripts ]; then
-  for script in user/scripts/*; do
+[ -d "${USERDIR}/files" ] && sudo cp -r "${USERDIR}"/files/* "$WD/"
+if [ -d "${USERDIR}/scripts" ]; then
+  for script in "${USERDIR}"/scripts/*; do
     if [ -f "$script" -a -x "$script" ]; then
       sudo cp "$script" "$WD/user-script.sh"
       sudo chroot "$WD" /bin/bash -c /user-script.sh
@@ -257,10 +261,10 @@ if [ -d user/scripts ]; then
   sudo rm "$WD/user-script.sh" || true
 fi
 
-if [ -d user/fileprops ]; then
+if [ -d "${USERDIR}"/fileprops ]; then
   while read line; do
     chown_inside $line
-  done <user/fileprops
+  done <"${USERDIR}"/fileprops
 fi
 
 sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper

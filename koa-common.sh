@@ -3,10 +3,11 @@ set -ex
 
 function parse_params
 {
-  IMG="koa.img"
-  WD="koa"
-  CACHE="cache"
-  BUILDDIR="build"
+  IMG="${SCRIPTDIR}/koa.img"
+  WD="${SCRIPTDIR}/koa"
+  CACHE="${SCRIPTDIR}/cache"
+  BUILDDIR="${SCRIPTDIR}/build"
+  USERDIR="${SCRIPTDIR}/user"
   IMGSIZE="2500M"
   BOOTSIZE="150MiB"
   SUBVOL="@koa_root"
@@ -39,6 +40,10 @@ function parse_params
         ;;
       -v | --subvolume )
         SUBVOL="$2"
+        shift
+        ;;
+      -u | --user )
+        USERDIR="$2"
         shift
         ;;
       * )

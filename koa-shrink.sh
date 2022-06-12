@@ -1,8 +1,8 @@
 #!/bin/bash
 set -ex
 
-SCRIPTPATH="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-. "${SCRIPTPATH}/koa-common.sh"
+export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+. "${SCRIPTDIR}/koa-common.sh"
 
 parse_params $@
 
