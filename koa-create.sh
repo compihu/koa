@@ -213,16 +213,37 @@ prebuild_in_docker()
 }
 
 
-chown_inside()
+apply_fileprops()
 {
   if [ ! -e "${WD}/$1" ]; then sudo mkdir -p "${WD}/$1"; fi
   sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R $2 $1"
+  [ -z "$3" ] || sudo chroot "$WD" /bin/bash -c "/usr/bin/chmod $3 $1"
+}
+
+
+process_user_dir()
+{
+  [ -d "${USERDIR}/files" ] && sudo cp -r "${USERDIR}"/files/* "$WD/"
+  if [ -d "${USERDIR}/scripts" ]; then
+    for script in "${USERDIR}"/scripts/*; do
+      if [ -f "$script" -a -x "$script" ]; then
+        sudo cp "$script" "$WD/user-script.sh"
+        sudo chroot "$WD" /bin/bash -c /user-script.sh
+      fi
+    done
+    sudo rm "$WD/user-script.sh" || true
+  fi
+
+  if [ -d "${USERDIR}"/fileprops ]; then
+    while read line; do
+      apply_fileprops $line
+    done <"${USERDIR}"/fileprops
+  fi
 }
 
 
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
-# K,M,G -> *1024; KB,MB,GB -> *1000
 
 parse_params $@
 
@@ -250,28 +271,13 @@ cp "${SCRIPTDIR}/klipper_rpi.config" "$BUILDDIR/"
 sudo chroot "$WD" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
 sudo rm "$WD/koa-setup.sh"
 
-[ -d "${USERDIR}/files" ] && sudo cp -r "${USERDIR}"/files/* "$WD/"
-if [ -d "${USERDIR}/scripts" ]; then
-  for script in "${USERDIR}"/scripts/*; do
-    if [ -f "$script" -a -x "$script" ]; then
-      sudo cp "$script" "$WD/user-script.sh"
-      sudo chroot "$WD" /bin/bash -c /user-script.sh
-    fi
-  done
-  sudo rm "$WD/user-script.sh" || true
-fi
+sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
 
-if [ -d "${USERDIR}"/fileprops ]; then
-  while read line; do
-    chown_inside $line
-  done <"${USERDIR}"/fileprops
-fi
+process_user_dir
 
-sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper
 sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
 
 sudo fuser -k "$WD" || true
-
 sudo btrfs sub snap "$WD/mnt/fs_root/$SUBVOL" "$WD/mnt/fs_root/$SUBVOL.inst"
 sudo umount -R "$WD"
 sudo losetup -D "$IMG"
