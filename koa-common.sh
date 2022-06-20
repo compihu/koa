@@ -58,3 +58,20 @@ function parse_params
     shift
   done
 }
+
+
+show_environment()
+{
+  echo "-------------------------------------------------"
+  echo "Image:       ${IMG}"
+  echo "Workdir:     ${WD}"
+  echo "Cache:       ${CACHE}"
+  echo "Builddir:    ${BUILDDIR}"
+  echo "Userdir:     ${USERDIR}"
+  echo "Wifi SSID:   ${WIFI_SSID}"
+  echo "Wifi passwd: ${WIFI_PASSWD}"
+  echo "Trusted net: ${TRUSTED_NET}"
+  echo "-------------------------------------------------"
+  echo
+}
+
