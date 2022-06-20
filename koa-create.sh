@@ -101,15 +101,21 @@ prepare_target()
   sudo mount ${parts[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
   sudo mkdir "${WD}"/boot
   sudo mount ${parts[0]} "${WD}"/boot
+}
 
+
+create_root_tree()
+{
   # Extracting the tarball and preparing the chroot
   sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
-  sudo cp $(which qemu-arm-static) "${WD}/usr/local/bin/"
 
   sudo mkdir "${WD}/mnt/fs_root"
   sudo mount ${parts[1]} "${WD}/mnt/fs_root" -osubvolid=0
 
-  for d in dev proc sys; do sudo mount --bind /$d "$WD/$d"; done
+  for dir in dev proc sys; do
+    [ -d "${dir}" ] || mkdir "${dir}"
+    sudo mount --bind /"${dir}" "${WD}/${dir}"
+  done
 
   [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
   [ -f "${WD}/run/systemd/resolve/resolv.conf" ] || sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
@@ -258,6 +264,7 @@ prebuild_in_docker
 
 get_tarball
 prepare_target
+create_root_tree
 
 sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
 
