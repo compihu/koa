@@ -42,6 +42,21 @@ check_vars()
   check_var "TRUSTED_NET"
 }
 
+show_environment()
+{
+  echo "-------------------------------------------------"
+  echo "Image:       ${IMG}"
+  echo "Workdir:     ${WD}"
+  echo "Cache:       ${CACHE}"
+  echo "Builddir:    ${BUILDDIR}"
+  echo "Userdir:     ${USERDIR}"
+  echo "Wifi SSID:   ${WIFI_SSID}"
+  echo "Wifi passwd: ${WIFI_PASSWD}"
+  echo "Trusted net: ${TRUSTED_NET}"
+  echo "-------------------------------------------------"
+  echo
+}
+
 
 # verifying and downloading the tarball if necessary
 get_tarball()
@@ -221,7 +236,8 @@ prebuild_in_docker()
 
 apply_fileprops()
 {
-  if [ ! -e "${WD}/$1" ]; then sudo mkdir -p "${WD}/$1"; fi
+  local path=$(echo "${WD}/$1" | sed -E 's#/+#/#g')
+  if [ ! -e "${path}" ]; then sudo mkdir -p "${path}"; fi
   sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R $2 $1"
   [ -z "$3" ] || sudo chroot "$WD" /bin/bash -c "/usr/bin/chmod $3 $1"
 }
@@ -240,13 +256,12 @@ process_user_dir()
     sudo rm "$WD/user-script.sh" || true
   fi
 
-  if [ -d "${USERDIR}"/fileprops ]; then
+  if [ -f "${USERDIR}"/fileprops ]; then
     while read line; do
-      apply_fileprops $line
+      [ -z "${line}" ]  || [[ "${line}" =~ ^[[:space:]]*\#.* ]] || apply_fileprops ${line}
     done <"${USERDIR}"/fileprops
   fi
 }
-
 
 ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
 URL="http://os.archlinuxarm.org/os/$ARCHIVE"
@@ -259,6 +274,7 @@ for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}
 
 . "${USERDIR}/secrets.sh"
 check_vars
+show_environment
 
 prebuild_in_docker
 

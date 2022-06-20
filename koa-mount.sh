@@ -18,7 +18,7 @@ fi
 sudo mount ${parts[1]} "$WD" "-ocompress=zstd:15,subvol=${SUBVOL}"
 sudo mount ${parts[1]} "$WD/mnt/fs_root" "-osubvolid=0"
 sudo mount ${parts[0]} "$WD"/boot
-sudo mount --bind "$BUILD" "$WD/build"
+sudo mount --bind "$BUILDDIR" "$WD/build"
 sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
 for d in dev proc sys; do sudo mount --bind /$d "$WD"/$d; done
 [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
