@@ -4,7 +4,7 @@ cd
 yay -Syu --noconfirm
 yay -S --needed --builddir /build --noconfirm --norebuild --mflags --nocheck klipper-py3-git
 yay -S --needed --builddir /build --asdeps --noconfirm $(expac -Q '%o' klipper-py3-git)
-yay -S --needed --builddir /build --noconfirm --norebuild moonraker-git
+yay -S --needed --builddir /build --noconfirm --norebuild --mflags --skipchecksums moonraker-git
 yay -S --needed --builddir /build --noconfirm --norebuild --removemake mainsail-git
 
 unset err

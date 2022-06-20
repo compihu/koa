@@ -35,7 +35,7 @@ cat >/home/alarm/koa-user.sh <<-EOF
 	set -ex
 
 	$AH -S --builddir /build --noconfirm --removemake --norebuild --mflags --nocheck klipper-py3-git
-	$AH -S --builddir /build --noconfirm --removemake --norebuild moonraker-git
+	$AH -S --builddir /build --noconfirm --removemake --norebuild  --mflags --skipchecksums moonraker-git
 	$AH -S --builddir /build --noconfirm --removemake --norebuild ustreamer
 EOF
 chmod a+x /home/alarm/koa-user.sh
