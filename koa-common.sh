@@ -10,6 +10,7 @@ function parse_params
   USERDIR="${SCRIPTDIR}/user"
   IMGSIZE="2500M"
   BOOTSIZE="150MiB"
+  USE_BTRFS=1
   SUBVOL="@koa_root"
 
   while [ $# != 0 ] ; do
@@ -45,6 +46,9 @@ function parse_params
       -u | --user )
         USERDIR="$2"
         shift
+        ;;
+      -4 | --ext4 )
+        unset USE_BTRFS
         ;;
       * )
         echo "Unknown option $1."

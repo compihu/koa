@@ -106,16 +106,24 @@ prepare_target()
   parts=( "${loopdev}p1" "${loopdev}p2" )
 
   sudo mkfs.msdos -n KOA-BOOT ${parts[0]}
-  sudo mkfs.btrfs -f -L koa-root ${parts[1]}
 
-  # btrfs snapshot magic
-  sudo mount ${parts[1]} "${WD}" -ocompress=zstd:15
-  sudo btrfs sub cre "${WD}/$SUBVOL"
-  sudo btrfs property set "${WD}/$SUBVOL" compression zstd
-  sudo umount "${WD}"
-  sudo mount ${parts[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
-  sudo mkdir "${WD}"/boot
-  sudo mount ${parts[0]} "${WD}"/boot
+  if [ -z "${USE_BTRFS}" ]; then
+    sudo mkfs.ext4 -L koa-root ${parts[1]}
+    sudo mount ${parts[1]} "${WD}"
+  else
+    sudo mkfs.btrfs -f -L koa-root ${parts[1]}
+    ## btrfs snapshot magic
+    sudo mount ${parts[1]} "${WD}" -ocompress=zstd:15
+    sudo btrfs sub cre "${WD}/$SUBVOL"
+    sudo btrfs property set "${WD}/$SUBVOL" compression zstd
+    sudo umount "${WD}"
+    sudo mount ${parts[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
+    sudo mkdir -p "${WD}/mnt/fs_root"
+    sudo mount ${parts[1]} "${WD}/mnt/fs_root" -osubvolid=0
+  fi
+
+  sudo mkdir "${WD}/boot"
+  sudo mount ${parts[0]} "${WD}/boot"
 }
 
 
@@ -123,9 +131,6 @@ create_root_tree()
 {
   # Extracting the tarball and preparing the chroot
   sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
-
-  sudo mkdir "${WD}/mnt/fs_root"
-  sudo mount ${parts[1]} "${WD}/mnt/fs_root" -osubvolid=0
 
   for dir in dev proc sys; do
     [ -d "${dir}" ] || mkdir "${dir}"
