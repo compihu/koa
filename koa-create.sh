@@ -87,46 +87,86 @@ prepare_target()
     mkpart primary fat16 1MiB "${BOOTSIZE}" \
     mkpart primary btrfs "${BOOTSIZE}" 100%
 
-  loopdev=( $(sudo losetup --find --show --partscan "$IMG") )
-  parts=( "${loopdev}p1" "${loopdev}p2" )
+  LOOPDEV=( $(sudo losetup --find --show --partscan "$IMG") )
+  PARTS=( "${LOOPDEV}p1" "${LOOPDEV}p2" )
 
-  sudo mkfs.msdos -n KOA-BOOT ${parts[0]}
+  sudo mkfs.msdos -n KOA-BOOT ${PARTS[0]}
 
   if [ -z "${USE_BTRFS}" ]; then
-    sudo mkfs.ext4 -L koa-root ${parts[1]}
-    sudo mount ${parts[1]} "${WD}"
+    sudo mkfs.ext4 -L koa-root ${PARTS[1]}
+    sudo mount ${PARTS[1]} "${WD}"
   else
-    sudo mkfs.btrfs -f -L koa-root ${parts[1]}
+    sudo mkfs.btrfs -f -L koa-root ${PARTS[1]}
     ## btrfs snapshot magic
-    sudo mount ${parts[1]} "${WD}" -ocompress=zstd:15
+    sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
     sudo btrfs sub cre "${WD}/$SUBVOL"
     sudo btrfs property set "${WD}/$SUBVOL" compression zstd
     sudo umount "${WD}"
-    sudo mount ${parts[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
-    sudo mkdir -p "${WD}/mnt/fs_root"
-    sudo mount ${parts[1]} "${WD}/mnt/fs_root" -osubvolid=0
+    sudo mount ${PARTS[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
   fi
 
   sudo mkdir "${WD}/boot"
-  sudo mount ${parts[0]} "${WD}/boot"
+  sudo mount ${PARTS[0]} "${WD}/boot"
+
+  for dir in dev proc sys run tmp; do
+    [ -d "${WD}/${dir}" ] || sudo mkdir "${WD}/${dir}"
+    sudo mount --bind /"${dir}" "${WD}/${dir}"
+  done
+
+  [ -d "${CACHE}" ] || mkdir "${CACHE}"
+  sudo mkdir -p "${WD}/var/cache/apk"
+  sudo mount --bind "${CACHE}" "${WD}/var/cache/apk"
 }
 
 
 create_root_tree()
 {
+  ALPINE_BRANCH="latest-stable"
+  ALPINE_MIRROR="http://dl-cdn.alpinelinux.org/alpine"
+  ALPINE_ARCH="armv7"
+  packages="alpine-base linux-rpi2 openrc busybox-initscripts chrony alpine-conf"
+
+  pkg=$(curl -s ${ALPINE_MIRROR}/${ALPINE_BRANCH}/main/armv7/ | grep apk-tools-static | sed -E 's/.*href=".*(apk-tools-static.*\.apk)".*/\1/')
+  temp_dir=$(mktemp -d)
+  curl -s -o "${temp_dir}/${pkg}" "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main/armv7/${pkg}"
+  tar -C "${temp_dir}" -xzf "${temp_dir}/${pkg}"
+
+  sudo mkdir -p "${WD}/etc/apk"
+  sudo ln -s  "${WD}/var/cache/apk" "${WD}/etc/apk/cache"
+
+  sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -U --allow-untrusted -p "${WD}" --arch armv7 --initdb add alpine-keys
+  sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -U  -p "${WD}" --arch armv7 add apk-tools
+  sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -U  -p "${WD}" --arch armv7 add ${packages}
+
+  sudo rm "${WD}/etc/apk/cache"
+  sudo ln -sf  "/var/cache/apk" "${WD}/etc/apk/cache"
+  sudo rm -rf "${temp_dir}"
+
+  sudo sed -Ei 's/^(features=")/\1btrfs /' "${WD}/etc/mkinitfs/mkinitfs.conf"
+  sudo chroot "${WD}" /bin/ash -l <<-EOF
+		mkinitfs $(ls "${WD}/lib/modules/")
+	EOF
+  
+  printf '%s\n' \
+    "$ALPINE_MIRROR/$ALPINE_BRANCH/main" \
+    "$ALPINE_MIRROR/$ALPINE_BRANCH/community" \
+	  | sudo tee "${WD}/etc/apk/repositories" >/dev/null
+  sudo cp /etc/resolv.conf "${WD}/etc/"
+  sudo chroot "${WD}" /bin/ash -l -c "apk update"
+
+  ## TODO: install linux-rpi2, openrc, busybox-initscripts
+  ## TODO: install alpine-conf
+  ## TODO: install chrony
+  # TODO: add btrfs to mkinitfs.conf
+
   # Extracting the tarball and preparing the chroot
-  sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
+  # sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
 
-  for dir in dev proc sys; do
-    [ -d "${dir}" ] || mkdir "${dir}"
-    sudo mount --bind /"${dir}" "${WD}/${dir}"
-  done
+  # [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
+  # [ -f "${WD}/run/systemd/resolve/resolv.conf" ] || sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
 
-  [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
-  [ -f "${WD}/run/systemd/resolve/resolv.conf" ] || sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
-
-  USRID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f3)
-  GRPID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f4)
+  # USRID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f3)
+  # GRPID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f4)
 }
 
 
@@ -266,31 +306,40 @@ for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}
 check_vars
 show_environment
 
-prebuild_in_docker
+# prebuild_in_docker
 
-get_tarball
+# get_tarball
 prepare_target
+
 create_root_tree
 
-sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
+# exit 0
 
-essential_setup
-edit_system_configs
+# sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
 
-sudo mkdir "$WD/build"
-sudo mount --bind "$BUILDDIR" "$WD/build"
-sudo cp "${SCRIPTDIR}/koa-setup.sh" "$WD/"
-cp "${SCRIPTDIR}/klipper_rpi.config" "$BUILDDIR/"
-sudo chroot "$WD" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
-sudo rm "$WD/koa-setup.sh"
+# essential_setup
+# edit_system_configs
 
-sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
+# sudo mkdir "$WD/build"
+# sudo mount --bind "$BUILDDIR" "$WD/build"
+# sudo cp "${SCRIPTDIR}/koa-setup.sh" "$WD/"
+# cp "${SCRIPTDIR}/klipper_rpi.config" "$BUILDDIR/"
+# sudo chroot "$WD" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
+# sudo rm "$WD/koa-setup.sh"
 
-process_user_dir
+# sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
 
-sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
+# process_user_dir
+
+# sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
 
 sudo fuser -k "$WD" || true
-sudo btrfs sub snap "$WD/mnt/fs_root/$SUBVOL" "$WD/mnt/fs_root/$SUBVOL.inst"
+if [ ! -z "${USE_BTRFS}" ] ; then
+  sudo mkdir -p "${WD}/mnt/fs_root"
+  sudo mount ${PARTS[1]} "${WD}/mnt/fs_root" -osubvolid=0
+  sudo btrfs sub snap "${WD}/mnt/fs_root/${SUBVOL}" "$WD/mnt/fs_root/${SUBVOL}.inst"
+fi
+
+sleep 1
 sudo umount -R "$WD"
-sudo losetup -D "$IMG"
+sudo losetup -d "${LOOPDEV}"
