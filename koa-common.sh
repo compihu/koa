@@ -8,8 +8,8 @@ function parse_params
   CACHE="${SCRIPTDIR}/cache"
   BUILDDIR="${SCRIPTDIR}/build"
   USERDIR="${SCRIPTDIR}/user"
-  IMGSIZE="2500M"
-  BOOTSIZE="150MiB"
+  IMGSIZE="1000MB"
+  BOOTSIZE="64MiB"
   USE_BTRFS=1
   SUBVOL="@koa_root"
 

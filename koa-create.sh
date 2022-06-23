@@ -43,41 +43,6 @@ check_vars()
 }
 
 
-# verifying and downloading the tarball if necessary
-get_tarball()
-{
-  local tgz_ok
-  local downloaded
-
-  pushd "${SCRIPTDIR}"
-  if [ -f "$ARCHIVE.md5" ]; then
-    rm "$ARCHIVE.md5"
-  fi
-  wget "$URL".md5
-  upsmd5=$(cat "$ARCHIVE.md5" | cut -d ' ' -f1)
-
-  if [ -f "$ARCHIVE" ]; then
-    imgmd5=$(md5sum "$ARCHIVE" | cut -d ' ' -f1)
-    if [ $imgmd5 != $upsmd5 ]; then
-      rm "$ARCHIVE"
-      wget "${URL}"
-      downloaded=1
-    fi
-  else
-    wget "${URL}"
-    downloaded=1
-  fi
-
-  imgmd5=$(md5sum "${ARCHIVE}"|cut -d ' ' -f1)
-  if [ "${imgmd5}" != "${upsmd5}" ]; then
-    echo "Image checksum failure, giving up!"
-    popd
-    exit false
-  fi
-  popd
-}
-
-
 prepare_target()
 {
   # Creating the image file, partition and mount it
@@ -124,29 +89,25 @@ create_root_tree()
   ALPINE_BRANCH="latest-stable"
   ALPINE_MIRROR="http://dl-cdn.alpinelinux.org/alpine"
   ALPINE_ARCH="armv7"
-  packages="alpine-base linux-rpi2 openrc busybox-initscripts chrony alpine-conf"
+  packages="raspberrypi-bootloader openrc busybox-initscripts chrony alpine-conf"
 
   pkg=$(curl -s ${ALPINE_MIRROR}/${ALPINE_BRANCH}/main/armv7/ | grep apk-tools-static | sed -E 's/.*href=".*(apk-tools-static.*\.apk)".*/\1/')
   temp_dir=$(mktemp -d)
-  curl -s -o "${temp_dir}/${pkg}" "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main/armv7/${pkg}"
-  tar -C "${temp_dir}" -xzf "${temp_dir}/${pkg}"
+  [ -e "${CACHE}/${pkg}" ] ||  curl -s -o "${CACHE}/${pkg}" "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main/armv7/${pkg}"
+  tar -C "${temp_dir}" -xzf "${CACHE}/${pkg}"
 
   sudo mkdir -p "${WD}/etc/apk"
   sudo ln -s  "${WD}/var/cache/apk" "${WD}/etc/apk/cache"
 
   sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -U --allow-untrusted -p "${WD}" --arch armv7 --initdb add alpine-keys
-  sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -U  -p "${WD}" --arch armv7 add apk-tools
-  sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -U  -p "${WD}" --arch armv7 add ${packages}
-
+  sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -p "${WD}" --arch armv7 add alpine-base
+  
+  # removing local apk.static
   sudo rm "${WD}/etc/apk/cache"
   sudo ln -sf  "/var/cache/apk" "${WD}/etc/apk/cache"
   sudo rm -rf "${temp_dir}"
 
-  sudo sed -Ei 's/^(features=")/\1btrfs /' "${WD}/etc/mkinitfs/mkinitfs.conf"
-  sudo chroot "${WD}" /bin/ash -l <<-EOF
-		mkinitfs $(ls "${WD}/lib/modules/")
-	EOF
-  
+  # configuring apk repositories
   printf '%s\n' \
     "$ALPINE_MIRROR/$ALPINE_BRANCH/main" \
     "$ALPINE_MIRROR/$ALPINE_BRANCH/community" \
@@ -154,10 +115,80 @@ create_root_tree()
   sudo cp /etc/resolv.conf "${WD}/etc/"
   sudo chroot "${WD}" /bin/ash -l -c "apk update"
 
+  # adding packages
+  sudo chroot "${WD}" /bin/ash -l -c "apk add mkinitfs zram-init"
+
+  sudo sed -Ei 's/^(features=")/\1btrfs /' "${WD}/etc/mkinitfs/mkinitfs.conf"
+
+  sudo chroot "${WD}" /bin/ash -l -c "apk add linux-rpi2 linux-rpi4"
+  sudo chroot "${WD}" /bin/ash -l -c "apk add ${packages}"
+
+  sudo chroot "${WD}" /bin/ash -l -c 'rc-update add zram-init boot'
+
+  echo "modules=loop,squashfs,sd-mod,usb-storage,btrfs" \
+    "root=/dev/mmcblk0p2" \
+    "rw" \
+    "rootflags=subvol=@koa_root,compress=zstd:15,noatime" \
+    "elevator=deadline" \
+    "fsck.repair=yes" \
+    "console=tty1" \
+    "rootwait" \
+    | sudo tee "${WD}/boot/cmdline.txt" >/dev/null
+
+  sudo tee "${WD}/boot/config.txt" >/dev/null <<-EOF
+		[pi02]
+		kernel=vmlinuz-rpi2
+		initramfs initramfs-rpi2
+		arm_64bit=1
+		[pi2]
+		kernel=vmlinuz-rpi2
+		initramfs initramfs-rpi2
+		[pi3]
+		kernel=vmlinuz-rpi2
+		initramfs initramfs-rpi2
+		arm_64bit=1
+		[pi3+]
+		kernel=vmlinuz-rpi2
+		initramfs initramfs-rpi2
+		arm_64bit=1
+		[pi4]
+		enable_gic=1
+		kernel=vmlinuz-rpi4
+		initramfs initramfs-rpi4
+		arm_64bit=1
+		[all]
+		include usercfg.txt
+	EOF
+
+  sudo tee "${WD}/boot/usercfg.txt" > /dev/null <<-EOF
+	EOF
+
+  sudo tee "${WD}/etc/fstab" > /dev/null <<-EOF
+		/dev/mmcblk0p1  /boot           vfat     defaults                                            0 2
+		/dev/mmcblk0p2  /               btrfs    defaults,subvol=${SUBVOL},compress=zstd:15,noatime  0 0
+	EOF
+
+sudo tee "${WD}/etc/sysctl.conf" >/dev/null <<-EOF
+		vm.vfs_cache_pressure=500
+		vm.swappiness=100
+		vm.dirty_background_ratio=1
+		vm.dirty_ratio=50
+	EOF
+
+  sudo tee "${WD}/etc/local.d/cpufreq.start" >/dev/null <<-EOF
+		#!/bin/sh
+		for cpu in /sys/devices/system/cpu/cpufreq/policy*; do
+			echo performance > ${cpu}/scaling_governor
+		done
+	EOF
+
+  sudo chmod +x "${WD}/etc/local.d/cpufreq.start"
+  sudo chroot "${WD}" /bin/ash -l -c 'rc-update add local default'
+
   ## TODO: install linux-rpi2, openrc, busybox-initscripts
   ## TODO: install alpine-conf
   ## TODO: install chrony
-  # TODO: add btrfs to mkinitfs.conf
+  ## TODO: add btrfs to mkinitfs.conf
 
   # Extracting the tarball and preparing the chroot
   # sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
