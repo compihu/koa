@@ -1,10 +1,6 @@
 #!/bin/bash
 set -ex
 
-export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-. "${SCRIPTDIR}/koa-common.sh"
-
-
 check_bin()
 {
   local binary=$(which "$1"  2>/dev/null || true)
@@ -19,18 +15,22 @@ check()
 {
   check_bin mkfs.msdos
   check_bin mkfs.btrfs
+  check_bin curl
+  check_bin jq
 
   if [ ! -f "${USERDIR}/mcu.config" ]; then
     echo "Create user/mcu.config for compiling MCU firmware"
     exit 1
   fi
+}
 
+check_secrets()
+{
   if [ ! -x "${USERDIR}/secrets.sh" ]; then
     echo "Create user/secrets.sh to set WIFI_SSID and WIFI_PASSWD"
     exit 1
   fi
 }
-
 
 check_var () { if [ -z ${!1} ]; then echo "$1 has no value!"; exit 1; fi; }
 
@@ -57,10 +57,7 @@ prepare_target()
 
   sudo mkfs.msdos -n KOA-BOOT ${PARTS[0]}
 
-  if [ -z "${USE_BTRFS}" ]; then
-    sudo mkfs.ext4 -L koa-root ${PARTS[1]}
-    sudo mount ${PARTS[1]} "${WD}"
-  else
+  if [ -z "${USE_EXT4}" ]; then
     sudo mkfs.btrfs -f -L koa-root ${PARTS[1]}
     ## btrfs snapshot magic
     sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
@@ -68,6 +65,9 @@ prepare_target()
     sudo btrfs property set "${WD}/$SUBVOL" compression zstd
     sudo umount "${WD}"
     sudo mount ${PARTS[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
+  else
+    sudo mkfs.ext4 -L koa-root ${PARTS[1]}
+    sudo mount ${PARTS[1]} "${WD}"
   fi
 
   sudo mkdir "${WD}/boot"
@@ -84,23 +84,22 @@ prepare_target()
 }
 
 
-create_root_tree()
+install_os()
 {
-  ALPINE_BRANCH="latest-stable"
-  ALPINE_MIRROR="http://dl-cdn.alpinelinux.org/alpine"
-  ALPINE_ARCH="armv7"
-  packages="raspberrypi-bootloader openrc busybox-initscripts chrony alpine-conf"
-
-  pkg=$(curl -s ${ALPINE_MIRROR}/${ALPINE_BRANCH}/main/armv7/ | grep apk-tools-static | sed -E 's/.*href=".*(apk-tools-static.*\.apk)".*/\1/')
+  local alpine_branch="latest-stable"
+  local alpine_mirror="http://dl-cdn.alpinelinux.org/alpine"
+  local alpine_arch="armv7"
+  
+  pkg=$(curl -s ${alpine_mirror}/${alpine_branch}/main/armv7/ | grep apk-tools-static | sed -E 's/.*href=".*(apk-tools-static.*\.apk)".*/\1/')
   temp_dir=$(mktemp -d)
-  [ -e "${CACHE}/${pkg}" ] ||  curl -s -o "${CACHE}/${pkg}" "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main/armv7/${pkg}"
+  [ -e "${CACHE}/${pkg}" ] ||  curl -s -o "${CACHE}/${pkg}" "${alpine_mirror}/${alpine_branch}/main/armv7/${pkg}"
   tar -C "${temp_dir}" -xzf "${CACHE}/${pkg}"
 
   sudo mkdir -p "${WD}/etc/apk"
   sudo ln -s  "${WD}/var/cache/apk" "${WD}/etc/apk/cache"
 
-  sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -U --allow-untrusted -p "${WD}" --arch armv7 --initdb add alpine-keys
-  sudo "${temp_dir}/sbin/apk.static" -X "${ALPINE_MIRROR}/${ALPINE_BRANCH}/main" -p "${WD}" --arch armv7 add alpine-base
+  sudo "${temp_dir}/sbin/apk.static" -X "${alpine_mirror}/${alpine_branch}/main" -U --allow-untrusted -p "${WD}" --arch armv7 --initdb add alpine-keys
+  sudo "${temp_dir}/sbin/apk.static" -X "${alpine_mirror}/${alpine_branch}/main" -p "${WD}" --arch armv7 add alpine-base
   
   # removing local apk.static
   sudo rm "${WD}/etc/apk/cache"
@@ -109,19 +108,17 @@ create_root_tree()
 
   # configuring apk repositories
   printf '%s\n' \
-    "$ALPINE_MIRROR/$ALPINE_BRANCH/main" \
-    "$ALPINE_MIRROR/$ALPINE_BRANCH/community" \
+    "$alpine_mirror/$alpine_branch/main" \
+    "$alpine_mirror/$alpine_branch/community" \
 	  | sudo tee "${WD}/etc/apk/repositories" >/dev/null
   sudo cp /etc/resolv.conf "${WD}/etc/"
   sudo chroot "${WD}" /bin/ash -l -c "apk update"
 
-  # adding packages
   sudo chroot "${WD}" /bin/ash -l -c "apk add mkinitfs zram-init"
 
   sudo sed -Ei 's/^(features=")/\1btrfs /' "${WD}/etc/mkinitfs/mkinitfs.conf"
 
-  sudo chroot "${WD}" /bin/ash -l -c "apk add linux-rpi2 linux-rpi4"
-  sudo chroot "${WD}" /bin/ash -l -c "apk add ${packages}"
+  sudo chroot "${WD}" /bin/ash -l -c "apk add linux-rpi2 linux-rpi4 raspberrypi-bootloader openrc busybox-initscripts"
 
   sudo chroot "${WD}" /bin/ash -l -c 'rc-update add zram-init boot'
 
@@ -136,27 +133,19 @@ create_root_tree()
     | sudo tee "${WD}/boot/cmdline.txt" >/dev/null
 
   sudo tee "${WD}/boot/config.txt" >/dev/null <<-EOF
-		[pi02]
 		kernel=vmlinuz-rpi2
 		initramfs initramfs-rpi2
-		arm_64bit=1
-		[pi2]
-		kernel=vmlinuz-rpi2
-		initramfs initramfs-rpi2
-		[pi3]
-		kernel=vmlinuz-rpi2
-		initramfs initramfs-rpi2
-		arm_64bit=1
-		[pi3+]
-		kernel=vmlinuz-rpi2
-		initramfs initramfs-rpi2
-		arm_64bit=1
+
 		[pi4]
 		enable_gic=1
 		kernel=vmlinuz-rpi4
 		initramfs initramfs-rpi4
-		arm_64bit=1
+
 		[all]
+		gpu_mem=32
+		enable_uart=1
+		dtparam=spi=on
+
 		include usercfg.txt
 	EOF
 
@@ -168,7 +157,7 @@ create_root_tree()
 		/dev/mmcblk0p2  /               btrfs    defaults,subvol=${SUBVOL},compress=zstd:15,noatime  0 0
 	EOF
 
-sudo tee "${WD}/etc/sysctl.conf" >/dev/null <<-EOF
+  sudo tee "${WD}/etc/sysctl.conf" >/dev/null <<-EOF
 		vm.vfs_cache_pressure=500
 		vm.swappiness=100
 		vm.dirty_background_ratio=1
@@ -178,53 +167,113 @@ sudo tee "${WD}/etc/sysctl.conf" >/dev/null <<-EOF
   sudo tee "${WD}/etc/local.d/cpufreq.start" >/dev/null <<-EOF
 		#!/bin/sh
 		for cpu in /sys/devices/system/cpu/cpufreq/policy*; do
-			echo performance > ${cpu}/scaling_governor
+		  echo performance > ${cpu}/scaling_governor
 		done
 	EOF
 
   sudo chmod +x "${WD}/etc/local.d/cpufreq.start"
   sudo chroot "${WD}" /bin/ash -l -c 'rc-update add local default'
-
-  ## TODO: install linux-rpi2, openrc, busybox-initscripts
-  ## TODO: install alpine-conf
-  ## TODO: install chrony
-  ## TODO: add btrfs to mkinitfs.conf
-
-  # Extracting the tarball and preparing the chroot
-  # sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
-
-  # [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
-  # [ -f "${WD}/run/systemd/resolve/resolv.conf" ] || sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
-
-  # USRID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f3)
-  # GRPID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f4)
 }
 
 
 essential_setup()
 {
-  sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
-    -e "s/#hu_HU.UTF-8/hu_HU.UTF-8/" \
-    -e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
-    "${WD}/etc/locale.gen"
+  ## System setup
+  sudo chroot "${WD}" /bin/ash -l -c "apk add chrony alpine-conf tzdata nano htop curl wget bash bash-completion findutils ca-certificates"
 
-  sudo chroot "$WD" /bin/bash <<-EOF
+  local ipdata=$(curl -s ipinfo.io)
+  local ip=$(jq -r .ip <<< "$ipdata")
+  local country=$(jq -r .country <<< "$ipdata")
+  local tz=$(jq -r .timezone <<< "$ipdata")
+
+  sudo chroot "${WD}" /bin/ash -l <<-EOF
 		set -ex
-		pacman-key --init
-		pacman-key --populate archlinuxarm
-
-		locale-gen
-
-		pacman --noconfirm -Sy
-		pacman --noconfirm -S btrfs-progs
-		pacman --noconfirm -Su
-
-		pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
-		# TODO: remove once development is finished
-		pacman --noconfirm -S mc screen pv man-db bash-completion parted
-
-		usermod -aG wheel alarm
+		update-ca-certificates
+		setup-timezone -z "${tz}"
+		echo "root:${ROOT_PASSWORD:-topsecret}" | chpasswd
+		setup-keymap us us-altgr-intl
+		sed -i 's/\/bin\/ash/\/bin\/bash/g' /etc/passwd
 	EOF
+
+  sudo chroot "${WD}" /bin/ash -l -c "setup-hostname ${TARGET_HOSTNAME}"
+  sudo chroot "${WD}" /bin/ash -l -c "apk add wpa_supplicant wireless-tools wireless-regdb iw"
+  sudo sed -i 's/wpa_supplicant_args=\"/wpa_supplicant_args=\" -u -Dwext,nl80211/' "${WD}/etc/conf.d/wpa_supplicant"
+
+  echo -e 'brcmfmac' | sudo tee "${WD}/etc/modules" >/dev/null
+
+  sudo tee "${WD}/boot/wpa_supplicant.conf" >/dev/null <<-EOF
+		network={
+		  ssid="${WIFI_SSID}"
+		  psk="${WIFI_PASSWD}"
+		}
+
+		ap_scan=1
+		autoscan=periodic:10
+		disable_scan_offload=1
+	EOF
+
+  sudo ln -s "/boot/wpa_supplicant.conf" "${WD}/etc/wpa_supplicant/wpa_supplicant.conf"
+
+  sudo tee "${WD}/etc/network/interfaces" >/dev/null <<-EOF
+		auto lo
+		iface lo inet loopback
+
+		auto eth0
+		iface eth0 inet dhcp
+
+		auto wlan0
+		iface wlan0 inet dhcp
+		  up iwconfig wlan0 power off
+	EOF
+
+  sudo chroot "${WD}" /bin/ash -l -c "apk add dbus avahi"
+
+  sudo chroot "${WD}" /bin/ash -l <<-EOF
+		set -ex
+		apk add eudev openssh haveged
+
+		for service in devfs dmesg; do
+			rc-update add "\${service}" sysinit
+		done
+
+		for service in modules sysctl hostname bootmisc swclock syslog swap; do
+			rc-update add "\${service}" boot
+		done
+
+		for service in dbus haveged sshd chronyd local networking avahi-daemon wpa_supplicant wpa_cli; do
+			rc-update add "\${service}" default
+		done
+
+		setup-udev -n
+
+		for service in mount-ro killprocs savecache; do
+			rc-update add "\${service}" shutdown
+		done
+	EOF
+
+  # USRID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f3)
+  # GRPID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f4)
+  # sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
+  #   -e "s/#hu_HU.UTF-8/hu_HU.UTF-8/" \
+  #   -e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
+  #   "${WD}/etc/locale.gen"
+
+  # sudo chroot "$WD" /bin/bash <<-EOF
+	# 	set -ex
+	# 	pacman-key --init
+	# 	pacman-key --populate archlinuxarm
+
+	# 	locale-gen
+
+	# 	pacman --noconfirm -Sy
+	# 	pacman --noconfirm -S btrfs-progs
+	# 	pacman --noconfirm -Su
+
+	# 	pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
+	# 	# TODO: remove once development is finished
+	# 	pacman --noconfirm -S mc screen pv man-db bash-completion parted
+
+	# 	usermod -aG wheel alarm
 }
 
 edit_system_configs()
@@ -299,8 +348,8 @@ apply_fileprops()
 {
   local path=$(echo "${WD}/$1" | sed -E 's#/+#/#g')
   if [ ! -e "${path}" ]; then sudo mkdir -p "${path}"; fi
-  sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R $2 $1"
-  [ -z "$3" ] || sudo chroot "$WD" /bin/bash -c "/usr/bin/chmod $3 $1"
+  sudo chroot "$WD" /bin/bash -l -c "chown -R $2 $1"
+  [ -z "$3" ] || sudo chroot "$WD" /bin/bash -l -c "chmod $3 $1"
 }
 
 
@@ -324,31 +373,28 @@ process_user_dir()
   fi
 }
 
-ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
-URL="http://os.archlinuxarm.org/os/$ARCHIVE"
+###############################################################################
+export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+. "${SCRIPTDIR}/koa-common.sh"
+parse_userdir $@
 
+check_secrets
+. "${USERDIR}/secrets.sh"
 parse_params $@
-
 check
+
+show_environment
 
 for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; done
 
-. "${USERDIR}/secrets.sh"
 check_vars
-show_environment
 
 # prebuild_in_docker
 
-# get_tarball
 prepare_target
+install_os
+essential_setup
 
-create_root_tree
-
-# exit 0
-
-# sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
-
-# essential_setup
 # edit_system_configs
 
 # sudo mkdir "$WD/build"
@@ -360,12 +406,12 @@ create_root_tree
 
 # sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
 
-# process_user_dir
+process_user_dir
 
-# sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
+sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
 
 sudo fuser -k "$WD" || true
-if [ ! -z "${USE_BTRFS}" ] ; then
+if [ -z "${USE_EXT4}" ] ; then
   sudo mkdir -p "${WD}/mnt/fs_root"
   sudo mount ${PARTS[1]} "${WD}/mnt/fs_root" -osubvolid=0
   sudo btrfs sub snap "${WD}/mnt/fs_root/${SUBVOL}" "$WD/mnt/fs_root/${SUBVOL}.inst"
