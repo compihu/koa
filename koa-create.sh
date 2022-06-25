@@ -81,6 +81,9 @@ prepare_target()
   [ -d "${CACHE}" ] || mkdir "${CACHE}"
   sudo mkdir -p "${WD}/var/cache/apk"
   sudo mount --bind "${CACHE}" "${WD}/var/cache/apk"
+
+  sudo mkdir "$WD/build"
+  sudo mount --bind "$BUILDDIR" "$WD/build"
 }
 
 
@@ -112,9 +115,7 @@ install_os()
     "$alpine_mirror/$alpine_branch/community" \
 	  | sudo tee "${WD}/etc/apk/repositories" >/dev/null
   sudo cp /etc/resolv.conf "${WD}/etc/"
-  sudo chroot "${WD}" /bin/ash -l -c "apk update"
-
-  sudo chroot "${WD}" /bin/ash -l -c "apk add mkinitfs zram-init"
+  sudo chroot "${WD}" /bin/ash -lc "apk update && apk add mkinitfs zram-init"
 
   sudo sed -Ei 's/^(features=")/\1btrfs /' "${WD}/etc/mkinitfs/mkinitfs.conf"
 
@@ -179,7 +180,7 @@ install_os()
 essential_setup()
 {
   ## System setup
-  sudo chroot "${WD}" /bin/ash -l -c "apk add chrony alpine-conf tzdata nano htop curl wget bash bash-completion findutils ca-certificates"
+  sudo chroot "${WD}" /bin/ash -l -c "apk add chrony alpine-conf tzdata shadow nano htop curl wget bash bash-completion findutils ca-certificates"
 
   local ipdata=$(curl -s ipinfo.io)
   local ip=$(jq -r .ip <<< "$ipdata")
@@ -226,7 +227,7 @@ essential_setup()
 		  up iwconfig wlan0 power off
 	EOF
 
-  sudo chroot "${WD}" /bin/ash -l -c "apk add dbus avahi"
+  sudo chroot "${WD}" /bin/ash -l -c "apk add dbus polkit avahi"
 
   sudo chroot "${WD}" /bin/ash -l <<-EOF
 		set -ex
@@ -276,6 +277,38 @@ essential_setup()
 	# 	usermod -aG wheel alarm
 }
 
+
+build_klipper()
+{
+  sudo chroot "${WD}" /bin/ash -l -c "apk add gcc make gcc-arm-none-eabi python3 git vim sudo"
+  sudo chroot "${WD}" /bin/ash -l -c "musl-dev linux-headers python3-dev libffi-dev"
+  sudo chroot "${WD}" /bin/ash -l -c "adduser -D klipper && adduser klipper wheel && echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' >/etc/sudoers.d/wheel-nopasswd"
+  sudo chroot "${WD}" su -l klipper -c <<-EOF
+		set -ex
+		git clone --depth 1 https://github.com/Klipper3d/klipper.git
+		git clone --depth 1 https://github.com/Arksine/moonraker.git
+		git clone --depth 1 https://github.com/mainsail-crew/mainsail.git
+		git clone --depth 1 https://github.com/fluidd-core/fluidd.git
+
+		python3 -m venv klipper-venv
+		klipper-venv/bin/python3 -m pip install --upgrade pip
+		klipper-venv/bin/pip install -r klipper/scripts/klippy-requirements.txt
+		pushd klipper
+		../klipper-venv/bin/python3 -m compileall klippy
+		../klipper-venv/bin/python3 klippy/chelper/__init__.py
+		popd
+	EOF
+
+  sudo tee "${WD}/etc/init.d/klipper" <<-EOF
+		#!/sbin/openrc-run
+		command="$KLIPPY_VENV_PATH/bin/python"
+		command_args="$KLIPPER_PATH/klippy/klippy.py $CONFIG_PATH/printer.cfg -l /tmp/klippy.log -a /tmp/klippy_uds"
+		command_background=true
+		command_user="$USER"
+		pidfile="/run/klipper.pid"
+	EOF
+}
+
 edit_system_configs()
 {
   sudo tee -a "$WD/etc/fstab" >/dev/null <<-EOF
@@ -315,15 +348,6 @@ edit_system_configs()
    -e 's/ kgdboc=serial0,115200//' \
    "${WD}/boot/cmdline.txt"
 
-  sudo tee -a "${WD}/boot/config.txt" >/dev/null <<-EOF
-
-		[all]
-		gpu_mem=16
-		enable_uart=1
-		dtparam=spi=on
-	EOF
-
-  echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' | sudo tee "${WD}/etc/sudoers.d/wheel-nopasswd" >/dev/null
 }
 
 
@@ -331,7 +355,7 @@ edit_system_configs()
 prebuild_in_docker()
 {
   pushd "${SCRIPTDIR}"
-  docker build -t arch-build docker-env
+  docker build -t alpine-build docker-env
   #find "$BUILDDIR" -type d -exec sudo chmod 777 {} \;
   cp "${USERDIR}/mcu.config" "$BUILDDIR/"
   docker run -it --rm \
@@ -373,6 +397,13 @@ process_user_dir()
   fi
 }
 
+
+cleanup()
+{
+  sudo chroot "${WD}" /bin/ash -l -c "rm /etc/apk/cache"
+}
+
+
 ###############################################################################
 export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 . "${SCRIPTDIR}/koa-common.sh"
@@ -407,6 +438,7 @@ essential_setup
 # sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
 
 process_user_dir
+cleanup
 
 sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
 

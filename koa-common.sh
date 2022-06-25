@@ -75,7 +75,7 @@ function parse_params
         shift
         ;;
       -o | --wifi-passwd )
-        WIFI_PASSWD:="$2"
+        WIFI_PASSWD="$2"
         shift
         ;;
       * )

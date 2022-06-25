@@ -23,7 +23,7 @@ else
   sudo mount ${parts[1]} "${WD}"
 fi
 sudo mount ${parts[0]} "${WD}/boot"
-[ -d "${WD}/build" ] && sudo mount --bind "$BUILDDIR" "${WD}/build"
-[ -d "$WD/var/cache/apk" ] && sudo mount --bind "$CACHE" "$WD/var/cache/apk"
+[ -d "${WD}/build" ] && [ -d "${BUILDDIR}" ] && sudo mount --bind "${BUILDDIR}" "${WD}/build"
+[ -d "$WD/var/cache/apk" ] && [ -d "${CACHE}" ] && sudo mount --bind "${CACHE}" "${WD}/var/cache/apk"
 for dir in dev proc sys run tmp; do [ -d "${WD}/${dir}" ] && sudo mount --bind "/${dir}" "${WD}/${dir}"; done
 sudo cp /etc/resolv.conf "${WD}/etc/resolv.conf"
