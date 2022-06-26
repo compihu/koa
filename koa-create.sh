@@ -1,9 +1,6 @@
 #!/bin/bash
 set -ex
 
-export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
-. "${SCRIPTDIR}/koa-common.sh"
-
 
 check_bin()
 {
@@ -19,16 +16,22 @@ check()
 {
   check_bin mkfs.msdos
   check_bin mkfs.btrfs
+  check_bin curl
+  check_bin jq
 
   if [ ! -f "${USERDIR}/mcu.config" ]; then
     echo "Create user/mcu.config for compiling MCU firmware"
     exit 1
   fi
+}
 
+apply_secrets()
+{
   if [ ! -x "${USERDIR}/secrets.sh" ]; then
     echo "Create user/secrets.sh to set WIFI_SSID and WIFI_PASSWD"
     exit 1
   fi
+  . "${USERDIR}/secrets.sh"
 }
 
 
@@ -46,6 +49,9 @@ check_vars()
 # verifying and downloading the tarball if necessary
 get_tarball()
 {
+  ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
+  URL="http://os.archlinuxarm.org/os/$ARCHIVE"
+
   local tgz_ok
   local downloaded
 
@@ -87,28 +93,44 @@ prepare_target()
     mkpart primary fat16 1MiB "${BOOTSIZE}" \
     mkpart primary btrfs "${BOOTSIZE}" 100%
 
-  loopdev=( $(sudo losetup --find --show --partscan "$IMG") )
-  parts=( "${loopdev}p1" "${loopdev}p2" )
+  LOOPDEV=( $(sudo losetup --find --show --partscan "$IMG") )
+  PARTS=( "${LOOPDEV}p1" "${LOOPDEV}p2" )
 
-  sudo mkfs.msdos -n KOA-BOOT ${parts[0]}
+  sudo mkfs.msdos -n KOA-BOOT ${PARTS[0]}
 
-  if [ -z "${USE_BTRFS}" ]; then
-    sudo mkfs.ext4 -L koa-root ${parts[1]}
-    sudo mount ${parts[1]} "${WD}"
-  else
-    sudo mkfs.btrfs -f -L koa-root ${parts[1]}
+  if [ -z "${USE_EXT4}" ]; then
+    sudo mkfs.btrfs -f -L koa-root ${PARTS[1]}
     ## btrfs snapshot magic
-    sudo mount ${parts[1]} "${WD}" -ocompress=zstd:15
+    sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
     sudo btrfs sub cre "${WD}/$SUBVOL"
     sudo btrfs property set "${WD}/$SUBVOL" compression zstd
     sudo umount "${WD}"
-    sudo mount ${parts[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
+    sudo mount ${PARTS[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
     sudo mkdir -p "${WD}/mnt/fs_root"
-    sudo mount ${parts[1]} "${WD}/mnt/fs_root" -osubvolid=0
+    sudo mount ${PARTS[1]} "${WD}/mnt/fs_root" -osubvolid=0
+  else
+    sudo mkfs.ext4 -L koa-root ${PARTS[1]}
+    sudo mount ${PARTS[1]} "${WD}"
   fi
 
   sudo mkdir "${WD}/boot"
-  sudo mount ${parts[0]} "${WD}/boot"
+  sudo mount ${PARTS[0]} "${WD}/boot"
+
+  for dir in dev proc sys; do
+    [ -d "${WD}/${dir}" ] || sudo mkdir "${WD}/${dir}"
+    sudo mount --bind /"${dir}" "${WD}/${dir}"
+  done
+
+  for dir in run tmp; do
+    [ -d "${WD}/${dir}" ] || sudo mkdir "${WD}/${dir}"
+    sudo mount none "${WD}/${dir}" -t tmpfs
+  done
+
+  [ -d "${WD}/var/cache/apk" ] || sudo mkdir -p "${WD}/var/cache/apk"
+  sudo mount --bind "${CACHE}" "${WD}/var/cache/apk"
+
+  [ -d "$WD/build" ] || sudo mkdir "$WD/build"
+  sudo mount --bind "$BUILDDIR" "$WD/build"
 }
 
 
@@ -116,11 +138,6 @@ create_root_tree()
 {
   # Extracting the tarball and preparing the chroot
   sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
-
-  for dir in dev proc sys; do
-    [ -d "${dir}" ] || mkdir "${dir}"
-    sudo mount --bind /"${dir}" "${WD}/${dir}"
-  done
 
   [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
   [ -f "${WD}/run/systemd/resolve/resolv.conf" ] || sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
@@ -153,8 +170,10 @@ essential_setup()
 		pacman --noconfirm -S mc screen pv man-db bash-completion parted
 
 		usermod -aG wheel alarm
+		echo "${TARGET_HOSTNAME}" >/etc/hostname
 	EOF
 }
+
 
 edit_system_configs()
 {
@@ -253,20 +272,27 @@ process_user_dir()
   fi
 }
 
-ARCHIVE="ArchLinuxARM-rpi-armv7-latest.tar.gz"
-URL="http://os.archlinuxarm.org/os/$ARCHIVE"
 
+cleanup()
+{
+  echo "cleanup"
+}
+
+
+###############################################################################
+export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
+. "${SCRIPTDIR}/koa-common.sh"
+parse_userdir $@
+
+apply_secrets
 parse_params $@
-
 check
+show_environment
+check_vars
 
 for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; done
 
-. "${USERDIR}/secrets.sh"
-check_vars
-show_environment
-
-prebuild_in_docker
+[ "${SKIP_PREBUILD}" == 1 ] || prebuild_in_docker
 
 get_tarball
 prepare_target
@@ -277,8 +303,6 @@ sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
 essential_setup
 edit_system_configs
 
-sudo mkdir "$WD/build"
-sudo mount --bind "$BUILDDIR" "$WD/build"
 sudo cp "${SCRIPTDIR}/koa-setup.sh" "$WD/"
 cp "${SCRIPTDIR}/klipper_rpi.config" "$BUILDDIR/"
 sudo chroot "$WD" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"

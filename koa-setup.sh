@@ -16,8 +16,8 @@ TRUSTED_NET="$1"
 # for development purposes
 # pacman --noconfirm -S mc screen pv man-db bash-completion parted
 
-sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
-#sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
+#sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
+sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
 
 cd /root
 git clone https://aur.archlinux.org/$AH-bin.git
