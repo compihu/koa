@@ -165,7 +165,7 @@ essential_setup()
 		pacman --noconfirm -S btrfs-progs
 		pacman --noconfirm -Su
 
-		pacman --noconfirm --needed -S vim sudo base-devel git usbutils nginx polkit v4l-utils avahi
+		pacman --noconfirm --needed -S vim sudo base-devel python3 git usbutils nginx polkit v4l-utils avahi
 		# TODO: remove once development is finished
 		pacman --noconfirm -S mc screen pv man-db bash-completion parted
 
@@ -227,7 +227,7 @@ edit_system_configs()
 
 
 # building whatever we can in docker first
-prebuild_in_docker()
+build_mcu_in_docker()
 {
   pushd "${SCRIPTDIR}"
   docker build -t arch-build docker-env
@@ -238,7 +238,7 @@ prebuild_in_docker()
     -v "${CACHE}/:/var/cache/pacman" \
     -v "${SCRIPTDIR}/docker-env/:/env" \
     arch-build \
-    /env/orchestrate.sh
+    /env/build_mcu.sh
     popd
 }
 
@@ -273,6 +273,13 @@ process_user_dir()
 }
 
 
+create_snapshot()
+{
+  [ -z "${USE_EXT4}" ] || return
+  sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/$1"
+}
+
+
 cleanup()
 {
   echo "cleanup"
@@ -292,8 +299,6 @@ check_vars
 
 for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; done
 
-[ "${SKIP_PREBUILD}" == 1 ] || prebuild_in_docker
-
 get_tarball
 prepare_target
 create_root_tree
@@ -303,18 +308,23 @@ sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
 essential_setup
 edit_system_configs
 
-sudo cp "${SCRIPTDIR}/koa-setup.sh" "$WD/"
+create_snapshot "${SUBVOL}.sys"
+
+sudo chroot "$WD" /bin/bash -c "usermod -l klipper -d /home/klipper -m alarm && groupmod -n klipper alarm"
+echo "klipper ALL=(ALL:ALL) NOPASSWD: ALL" | sudo tee "${WD}/etc/sudoers.d/klipper-nopasswd" >/dev/null
+
 cp "${SCRIPTDIR}/klipper_rpi.config" "$BUILDDIR/"
-sudo chroot "$WD" /bin/bash -c "/koa-setup.sh ${TRUSTED_NET}"
-sudo rm "$WD/koa-setup.sh"
+cat "${SCRIPTDIR}/koa-setup.sh" | sudo chroot koa su -l klipper -c "/bin/env TRUSTED_NET=\"${TRUSTED_NET}\" /bin/bash"
 
-sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
+build_mcu_in_docker
 
-process_user_dir
+# sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
+
+# process_user_dir
 
 sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
 
 sudo fuser -k "$WD" || true
-sudo btrfs sub snap "$WD/mnt/fs_root/$SUBVOL" "$WD/mnt/fs_root/$SUBVOL.inst"
+create_snapshot "${SUBVOL}.inst"
 sudo umount -R "$WD"
 sudo losetup -D "$IMG"

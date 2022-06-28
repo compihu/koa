@@ -22,8 +22,7 @@ function parse_userdir
       -o | --wifi-passwd )
         shift
         ;;
-      -4 | --ext4 | \
-      -k | --skip-prebuild )
+      -4 | --ext4 )
         ;;
       * )
         echo "Unknown option $1."
@@ -87,9 +86,6 @@ function parse_params
       -o | --wifi-passwd )
         WIFI_PASSWD="$2"
         shift
-        ;;
-      -k | --skip-prebuild )
-        SKIP_PREBUILD=1
         ;;
       * )
         echo "Unknown option $1."

@@ -16,10 +16,10 @@ TRUSTED_NET="$1"
 # for development purposes
 # pacman --noconfirm -S mc screen pv man-db bash-completion parted
 
-#sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
-sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
+# sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
+# sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
 
-cd /root
+cd
 git clone https://aur.archlinux.org/$AH-bin.git
 cd $AH-bin
 env EUID=1000 makepkg
@@ -27,37 +27,41 @@ pacman --noconfirm -U $AH-bin-*.pkg.*
 cd /root
 rm -rf $AH-bin
 
-# klipper optional dependencies
-pacman --noconfirm -S python-numpy python-matplotlib
+usermod -l klipper -d /home/klipper -m alarm
+groupmod -n klipper alarm
 
-cat >/home/alarm/koa-user.sh <<-EOF
-	#!/usr/bin/bash
-	set -ex
+# python3 infrastructure
+pacman --noconfirm -S python3
+curl -s https://bootstrap.pypa.io/get-pip.py | python3
 
-	$AH -S --builddir /build --noconfirm --removemake --norebuild --mflags --nocheck klipper-py3-git
-	$AH -S --builddir /build --noconfirm --removemake --norebuild  --mflags --skipchecksums moonraker-git
-	$AH -S --builddir /build --noconfirm --removemake --norebuild ustreamer
-EOF
-chmod a+x /home/alarm/koa-user.sh
-chown -R alarm:alarm /build/*
-su -l -c /home/alarm/koa-user.sh alarm
-rm /home/alarm/koa-user.sh
-sed -E 's#(ExecStart=.*) /etc/klipper/klipper.cfg (.*)#\1 /etc/klipper/printer.cfg \2 -l /var/log/klipper/klippy.log\nNice=-5#' /lib/systemd/system/klipper.service >/etc/systemd/system/klipper.service
+# cat >/home/alarm/koa-user.sh <<-EOF
+# 	#!/usr/bin/bash
+# 	set -ex
 
-pacman -U --noconfirm $(ls -t /build/mainsail-git/*-any.pkg.tar.* | head -n1)
-pacman -U --noconfirm $(ls -t /build/fluidd-git/*-any.pkg.tar.* | head -n1)
+# 	$AH -S --builddir /build --noconfirm --removemake --norebuild --mflags --nocheck klipper-py3-git
+# 	$AH -S --builddir /build --noconfirm --removemake --norebuild  --mflags --skipchecksums moonraker-git
+# 	$AH -S --builddir /build --noconfirm --removemake --norebuild ustreamer
+# EOF
+# chmod a+x /home/alarm/koa-user.sh
+# chown -R alarm:alarm /build/*
+# su -l -c /home/alarm/koa-user.sh alarm
+# rm /home/alarm/koa-user.sh
+# sed -E 's#(ExecStart=.*) /etc/klipper/klipper.cfg (.*)#\1 /etc/klipper/printer.cfg \2 -l /var/log/klipper/klippy.log\nNice=-5#' /lib/systemd/system/klipper.service >/etc/systemd/system/klipper.service
 
-su -s /bin/bash -c /bin/bash <<-EOF
-	set -ex
-	cd /usr/lib/klipper
-	cp /build/klipper_rpi.config .config
-	make -j$(nproc)
-EOF
+# pacman -U --noconfirm $(ls -t /build/mainsail-git/*-any.pkg.tar.* | head -n1)
+# pacman -U --noconfirm $(ls -t /build/fluidd-git/*-any.pkg.tar.* | head -n1)
 
-pushd /var/lib/klipper/
-cd /usr/lib/klipper
-make flash
-popd
+# su -s /bin/bash -c /bin/bash <<-EOF
+# 	set -ex
+# 	cd /usr/lib/klipper
+# 	cp /build/klipper_rpi.config .config
+# 	make -j$(nproc)
+# EOF
+
+# pushd /var/lib/klipper/
+# cd /usr/lib/klipper
+# make flash
+# popd
 
 usermod -a -G tty,video,audio klipper
 
