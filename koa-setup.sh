@@ -3,7 +3,7 @@ set -ex
 
 AH=yay
 DEFAULT_UI=mainsail
-TRUSTED_NET="$1"
+TRUSTED_NET="${TRUSTED_NET:-$1}"
 
 # pacman --noconfirm -S etckeeper git
 # git config --global init.defaultBranch master
@@ -21,18 +21,27 @@ TRUSTED_NET="$1"
 
 cd
 git clone https://aur.archlinux.org/$AH-bin.git
-cd $AH-bin
-env EUID=1000 makepkg
-pacman --noconfirm -U $AH-bin-*.pkg.*
-cd /root
+pushd $AH-bin
+makepkg
+sudo pacman --noconfirm -U $AH-bin-*.pkg.*
+popd
 rm -rf $AH-bin
 
-usermod -l klipper -d /home/klipper -m alarm
-groupmod -n klipper alarm
+curl -s 'https://bootstrap.pypa.io/get-pip.py' | python3
 
-# python3 infrastructure
-pacman --noconfirm -S python3
-curl -s https://bootstrap.pypa.io/get-pip.py | python3
+git clone --depth 1 'https://github.com/Klipper3d/klipper.git'
+
+cp /build/klipper_rpi.config klipper/.config
+make -C klipper -j$(nproc)
+sudo cp klipper/out/klipper.elf /usr/local/sbin/klipper_mcu.elf
+
+python3 -m venv klipper-venv
+klipper-venv/bin/python3 -m pip install --upgrade pip
+klipper-venv/bin/pip install -r klipper/scripts/klippy-requirements.txt
+pushd klipper
+../klipper-venv/bin/python3 -m compileall klippy
+../klipper-venv/bin/python3 klippy/chelper/__init__.py
+popd
 
 # cat >/home/alarm/koa-user.sh <<-EOF
 # 	#!/usr/bin/bash
@@ -63,244 +72,244 @@ curl -s https://bootstrap.pypa.io/get-pip.py | python3
 # make flash
 # popd
 
-usermod -a -G tty,video,audio klipper
+sudo usermod -a -G tty,video,audio klipper
 
 
-################################################################
-# Configuring Klipper & co.
-################################################################
-# Nginx main config
-cat >/etc/nginx/nginx.conf <<-EOF
-	user http;
-	worker_processes  1;
+# ################################################################
+# # Configuring Klipper & co.
+# ################################################################
+# # Nginx main config
+# cat >/etc/nginx/nginx.conf <<-EOF
+# 	user http;
+# 	worker_processes  1;
 
-	events {
-	    worker_connections  1024;
-	}
+# 	events {
+# 	    worker_connections  1024;
+# 	}
 
-	http {
-	    types_hash_max_size 2048;
-	    include             mime.types;
-	    default_type        application/octet-stream;
+# 	http {
+# 	    types_hash_max_size 2048;
+# 	    include             mime.types;
+# 	    default_type        application/octet-stream;
 
-	    sendfile            on;
-	    keepalive_timeout   65;
+# 	    sendfile            on;
+# 	    keepalive_timeout   65;
 
-	    include mjpgstreamers.conf;
-	    include webui.conf;
-	}
-EOF
+# 	    include mjpgstreamers.conf;
+# 	    include webui.conf;
+# 	}
+# EOF
 
-# Webcam upstreams
-cat >/etc/nginx/mjpgstreamers.conf <<-EOF
-	upstream mjpgstreamer1 {
-	    ip_hash;
-	    server 127.0.0.1:8080;
-	}
+# # Webcam upstreams
+# cat >/etc/nginx/mjpgstreamers.conf <<-EOF
+# 	upstream mjpgstreamer1 {
+# 	    ip_hash;
+# 	    server 127.0.0.1:8080;
+# 	}
 
-	upstream mjpgstreamer2 {
-	    ip_hash;
-	    server 127.0.0.1:8081;
-	}
+# 	upstream mjpgstreamer2 {
+# 	    ip_hash;
+# 	    server 127.0.0.1:8081;
+# 	}
 
-	upstream mjpgstreamer3 {
-	    ip_hash;
-	    server 127.0.0.1:8082;
-	}
+# 	upstream mjpgstreamer3 {
+# 	    ip_hash;
+# 	    server 127.0.0.1:8082;
+# 	}
 
-	upstream mjpgstreamer4 {
-	    ip_hash;
-	    server 127.0.0.1:8083;
-	}
-EOF
+# 	upstream mjpgstreamer4 {
+# 	    ip_hash;
+# 	    server 127.0.0.1:8083;
+# 	}
+# EOF
 
-# Klipper main configuration file
-cat >/etc/klipper/printer.cfg <<-EOF
-	[include webui-klipper.cfg]
-	[include moonraker-klipper.cfg]
+# # Klipper main configuration file
+# cat >/etc/klipper/printer.cfg <<-EOF
+# 	[include webui-klipper.cfg]
+# 	[include moonraker-klipper.cfg]
 
-	########################################
-	# Your printer configuration goes here #
-	########################################
+# 	########################################
+# 	# Your printer configuration goes here #
+# 	########################################
 	
-EOF
+# EOF
 
-# copying / editing mainsail config files
-ln=$(sed -n -e '/^\}$/=' /usr/share/doc/mainsail/mainsail-nginx.conf |tail -n1)
-head -n $(($ln - 1)) /usr/share/doc/mainsail/mainsail-nginx.conf >/etc/nginx/mainsail-nginx.conf
-cat >>/etc/nginx/mainsail-nginx.conf <<-EOF
+# # copying / editing mainsail config files
+# ln=$(sed -n -e '/^\}$/=' /usr/share/doc/mainsail/mainsail-nginx.conf |tail -n1)
+# head -n $(($ln - 1)) /usr/share/doc/mainsail/mainsail-nginx.conf >/etc/nginx/mainsail-nginx.conf
+# cat >>/etc/nginx/mainsail-nginx.conf <<-EOF
 
-	    location /webcam/ {
-	        postpone_output 0;
-	        proxy_buffering off;
-	        proxy_ignore_headers X-Accel-Buffering;
-	        access_log off;
-	        error_log off;
-	        proxy_pass http://mjpgstreamer1/;
-	    }
+# 	    location /webcam/ {
+# 	        postpone_output 0;
+# 	        proxy_buffering off;
+# 	        proxy_ignore_headers X-Accel-Buffering;
+# 	        access_log off;
+# 	        error_log off;
+# 	        proxy_pass http://mjpgstreamer1/;
+# 	    }
 
-	    location /webcam2/ {
-	        postpone_output 0;
-	        proxy_buffering off;
-	        proxy_ignore_headers X-Accel-Buffering;
-	        access_log off;
-	        error_log off;
-	        proxy_pass http://mjpgstreamer2/;
-	    }
+# 	    location /webcam2/ {
+# 	        postpone_output 0;
+# 	        proxy_buffering off;
+# 	        proxy_ignore_headers X-Accel-Buffering;
+# 	        access_log off;
+# 	        error_log off;
+# 	        proxy_pass http://mjpgstreamer2/;
+# 	    }
 
-	    location /webcam3/ {
-	        postpone_output 0;
-	        proxy_buffering off;
-	        proxy_ignore_headers X-Accel-Buffering;
-	        access_log off;
-	        error_log off;
-	        proxy_pass http://mjpgstreamer3/;
-	    }
+# 	    location /webcam3/ {
+# 	        postpone_output 0;
+# 	        proxy_buffering off;
+# 	        proxy_ignore_headers X-Accel-Buffering;
+# 	        access_log off;
+# 	        error_log off;
+# 	        proxy_pass http://mjpgstreamer3/;
+# 	    }
 
-	    location /webcam4/ {
-	        postpone_output 0;
-	        proxy_buffering off;
-	        proxy_ignore_headers X-Accel-Buffering;
-	        access_log off;
-	        error_log off;
-	        proxy_pass http://mjpgstreamer4/;
-	    }
-EOF
-tail -n +$ln /usr/share/doc/mainsail/mainsail-nginx.conf >>/etc/nginx/mainsail-nginx.conf
+# 	    location /webcam4/ {
+# 	        postpone_output 0;
+# 	        proxy_buffering off;
+# 	        proxy_ignore_headers X-Accel-Buffering;
+# 	        access_log off;
+# 	        error_log off;
+# 	        proxy_pass http://mjpgstreamer4/;
+# 	    }
+# EOF
+# tail -n +$ln /usr/share/doc/mainsail/mainsail-nginx.conf >>/etc/nginx/mainsail-nginx.conf
 
-sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
-  /usr/share/doc/mainsail/mainsail-klipper.cfg >/etc/klipper/mainsail-klipper.cfg
-
-
-# Copying / editing fluidd config files
-ln=$(sed -n -e '/^\}$/=' /usr/share/doc/fluidd/fluidd-nginx.conf |tail -n1)
-head -n $(($ln - 1)) /usr/share/doc/fluidd/fluidd-nginx.conf >/etc/nginx/fluidd-nginx.conf
-cat >>/etc/nginx/fluidd-nginx.conf <<-EOF
-
-	    location /webcam/ {
-	        postpone_output 0;
-	        proxy_buffering off;
-	        proxy_ignore_headers X-Accel-Buffering;
-	        access_log off;
-	        error_log off;
-	        proxy_pass http://mjpgstreamer1/;
-	    }
-
-	    location /webcam2/ {
-	        postpone_output 0;
-	        proxy_buffering off;
-	        proxy_ignore_headers X-Accel-Buffering;
-	        access_log off;
-	        error_log off;
-	        proxy_pass http://mjpgstreamer2/;
-	    }
-
-	    location /webcam3/ {
-	        postpone_output 0;
-	        proxy_buffering off;
-	        proxy_ignore_headers X-Accel-Buffering;
-	        access_log off;
-	        error_log off;
-	        proxy_pass http://mjpgstreamer3/;
-	    }
-
-	    location /webcam4/ {
-	        postpone_output 0;
-	        proxy_buffering off;
-	        proxy_ignore_headers X-Accel-Buffering;
-	        access_log off;
-	        error_log off;
-	        proxy_pass http://mjpgstreamer4/;
-	    }
-EOF
-tail -n +$ln /usr/share/doc/fluidd/fluidd-nginx.conf >>/etc/nginx/fluidd-nginx.conf
-
-sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
-  /usr/share/doc/fluidd/fluidd-klipper.cfg >/etc/klipper/fluidd-klipper.cfg
+# sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
+#   /usr/share/doc/mainsail/mainsail-klipper.cfg >/etc/klipper/mainsail-klipper.cfg
 
 
-# Copying moonraker configs and creating symlinks (instead of editing them)
-sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
-    /usr/share/doc/moonraker/moonraker-klipper.cfg >/etc/klipper/moonraker-klipper.cfg
-mkdir -p /var/cache/klipper/gcode
-chown -R klipper:klipper /var/cache/klipper
+# # Copying / editing fluidd config files
+# ln=$(sed -n -e '/^\}$/=' /usr/share/doc/fluidd/fluidd-nginx.conf |tail -n1)
+# head -n $(($ln - 1)) /usr/share/doc/fluidd/fluidd-nginx.conf >/etc/nginx/fluidd-nginx.conf
+# cat >>/etc/nginx/fluidd-nginx.conf <<-EOF
 
-# TODO: is it still needed?
-ln -s /usr/share/klipper/examples /usr/lib/klipper/config
-ln -s /usr/share/doc/klipper /usr/lib/klipper/docs
+# 	    location /webcam/ {
+# 	        postpone_output 0;
+# 	        proxy_buffering off;
+# 	        proxy_ignore_headers X-Accel-Buffering;
+# 	        access_log off;
+# 	        error_log off;
+# 	        proxy_pass http://mjpgstreamer1/;
+# 	    }
 
-sed -i -e "s/^\(host:\).*/\1 0.0.0.0/" \
-    -e "s/^#\(\[authorization\]\)/\1/" \
-    -e "s%^#\?\(trusted_clients:\)%\1\n  $TRUSTED_NET%" \
-    -e "s%^#\?\(cors_domains:\)%\1\n  *.local\n  *://.app.fluidd.xyz%" \
-    -e "s%^#\?\(database_path:\).*%\1 /var/lib/moonraker/db%" \
-    /etc/klipper/moonraker.conf
-mkdir /var/lib/moonraker
-chown klipper:klipper /var/lib/moonraker
+# 	    location /webcam2/ {
+# 	        postpone_output 0;
+# 	        proxy_buffering off;
+# 	        proxy_ignore_headers X-Accel-Buffering;
+# 	        access_log off;
+# 	        error_log off;
+# 	        proxy_pass http://mjpgstreamer2/;
+# 	    }
+
+# 	    location /webcam3/ {
+# 	        postpone_output 0;
+# 	        proxy_buffering off;
+# 	        proxy_ignore_headers X-Accel-Buffering;
+# 	        access_log off;
+# 	        error_log off;
+# 	        proxy_pass http://mjpgstreamer3/;
+# 	    }
+
+# 	    location /webcam4/ {
+# 	        postpone_output 0;
+# 	        proxy_buffering off;
+# 	        proxy_ignore_headers X-Accel-Buffering;
+# 	        access_log off;
+# 	        error_log off;
+# 	        proxy_pass http://mjpgstreamer4/;
+# 	    }
+# EOF
+# tail -n +$ln /usr/share/doc/fluidd/fluidd-nginx.conf >>/etc/nginx/fluidd-nginx.conf
+
+# sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
+#   /usr/share/doc/fluidd/fluidd-klipper.cfg >/etc/klipper/fluidd-klipper.cfg
+
+
+# # Copying moonraker configs and creating symlinks (instead of editing them)
+# sed -e 's#^\(path:\).*#\1 /var/cache/klipper/gcode#' \
+#     /usr/share/doc/moonraker/moonraker-klipper.cfg >/etc/klipper/moonraker-klipper.cfg
+# mkdir -p /var/cache/klipper/gcode
+# chown -R klipper:klipper /var/cache/klipper
+
+# # TODO: is it still needed?
+# ln -s /usr/share/klipper/examples /usr/lib/klipper/config
+# ln -s /usr/share/doc/klipper /usr/lib/klipper/docs
+
+# sed -i -e "s/^\(host:\).*/\1 0.0.0.0/" \
+#     -e "s/^#\(\[authorization\]\)/\1/" \
+#     -e "s%^#\?\(trusted_clients:\)%\1\n  $TRUSTED_NET%" \
+#     -e "s%^#\?\(cors_domains:\)%\1\n  *.local\n  *://.app.fluidd.xyz%" \
+#     -e "s%^#\?\(database_path:\).*%\1 /var/lib/moonraker/db%" \
+#     /etc/klipper/moonraker.conf
+# mkdir /var/lib/moonraker
+# chown klipper:klipper /var/lib/moonraker
 
 
 
-ln -s ${DEFAULT_UI}-nginx.conf /etc/nginx/webui.conf
-ln -s ${DEFAULT_UI}-klipper.cfg /etc/klipper/webui-klipper.cfg
+# ln -s ${DEFAULT_UI}-nginx.conf /etc/nginx/webui.conf
+# ln -s ${DEFAULT_UI}-klipper.cfg /etc/klipper/webui-klipper.cfg
 
-# Registering services
-cat >/etc/systemd/system/klipper-mcu.service <<-EOF
-	[Unit]
-	Description=Klipper MCU on Raspberry Pi
-	After=local-fs.target
-	Before=klipper.service
+# # Registering services
+# cat >/etc/systemd/system/klipper-mcu.service <<-EOF
+# 	[Unit]
+# 	Description=Klipper MCU on Raspberry Pi
+# 	After=local-fs.target
+# 	Before=klipper.service
 
-	[Install]
-	WantedBy=klipper.service
+# 	[Install]
+# 	WantedBy=klipper.service
 
-	[Service]
-	Type=simple
-	ExecStart=/usr/local/bin/klipper_mcu -r
-	Restart=always
-	RestartSec=10
-EOF
+# 	[Service]
+# 	Type=simple
+# 	ExecStart=/usr/local/bin/klipper_mcu -r
+# 	Restart=always
+# 	RestartSec=10
+# EOF
 
-cat >/etc/systemd/system/ustreamer@.service <<-EOF
-	[Unit]
-	Description=uStreamer service
-	After=network.target
+# cat >/etc/systemd/system/ustreamer@.service <<-EOF
+# 	[Unit]
+# 	Description=uStreamer service
+# 	After=network.target
 
-	[Service]
-	Environment="SCRIPT_ARGS=%I"
-	User=klipper
-	ExecStart=/usr/bin/ustreamer --process-name-prefix ustreamer-%I --log-level 0 -d /dev/video%I --device-timeout=8 -m mjpeg -r 1920x1080 -f 30 -s 0.0.0.0 -p 808%I
-	Nice=10
+# 	[Service]
+# 	Environment="SCRIPT_ARGS=%I"
+# 	User=klipper
+# 	ExecStart=/usr/bin/ustreamer --process-name-prefix ustreamer-%I --log-level 0 -d /dev/video%I --device-timeout=8 -m mjpeg -r 1920x1080 -f 30 -s 0.0.0.0 -p 808%I
+# 	Nice=10
 
-	[Install]
-	WantedBy=klipper.service
-EOF
+# 	[Install]
+# 	WantedBy=klipper.service
+# EOF
 
-cat >/etc/systemd/system/webcamd.service <<-EOF
-	[Unit]
-	Description=the MainsailOS webcam daemon (based on OctoPi) with the user specified config
+# cat >/etc/systemd/system/webcamd.service <<-EOF
+# 	[Unit]
+# 	Description=the MainsailOS webcam daemon (based on OctoPi) with the user specified config
 
-	[Service]
-	WorkingDirectory=/usr/local/bin
-	StandardOutput=append:/var/log/webcamd.log
-	StandardError=append:/var/log/webcamd.log
-	ExecStart=/usr/local/bin/webcamd
-	Restart=always
-	Type=forking
-	User=klipper
+# 	[Service]
+# 	WorkingDirectory=/usr/local/bin
+# 	StandardOutput=append:/var/log/webcamd.log
+# 	StandardError=append:/var/log/webcamd.log
+# 	ExecStart=/usr/local/bin/webcamd
+# 	Restart=always
+# 	Type=forking
+# 	User=klipper
 
-	[Install]
-	WantedBy=multi-user.target
-EOF
+# 	[Install]
+# 	WantedBy=multi-user.target
+# EOF
 
-systemctl enable wpa_supplicant@wlan0
-systemctl enable systemd-networkd
+# systemctl enable wpa_supplicant@wlan0
+# systemctl enable systemd-networkd
 
-systemctl enable klipper.service
-systemctl enable klipper-mcu.service
-systemctl enable moonraker.service
-systemctl enable nginx.service
-systemctl enable ustreamer@0.service
-systemctl enable avahi-daemon
+# systemctl enable klipper.service
+# systemctl enable klipper-mcu.service
+# systemctl enable moonraker.service
+# systemctl enable nginx.service
+# systemctl enable ustreamer@0.service
+# systemctl enable avahi-daemon
 
-echo "klipper ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *, /usr/bin/systemctl start *, /usr/bin/systemctl stop *, /usr/bin/shutdown *" >/etc/sudoers.d/klipper
-cp /build/klipper.bin /var/lib/klipper
+# echo "klipper ALL=(ALL) NOPASSWD: /usr/bin/systemctl restart *, /usr/bin/systemctl start *, /usr/bin/systemctl stop *, /usr/bin/shutdown *" >/etc/sudoers.d/klipper
+# cp /build/klipper.bin /var/lib/klipper
