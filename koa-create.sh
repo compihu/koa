@@ -18,6 +18,7 @@ check()
   check_bin mkfs.btrfs
   check_bin curl
   check_bin jq
+  check_bin xz
 
   if [ ! -f "${USERDIR}/mcu.config" ]; then
     echo "Create user/mcu.config for compiling MCU firmware"
@@ -43,6 +44,31 @@ check_vars()
   check_var "WIFI_SSID"
   check_var "WIFI_PASSWD"
   check_var "TRUSTED_NET"
+}
+
+
+create_snapshot()
+{
+  [ -z "${USE_EXT4}" ] || return
+  [ -d "${WD}/mnt/fs_root/${SUBVOL}_$1" ] && sudo btrfs subvolume delete "${WD}/mnt/fs_root/${SUBVOL}_$1"
+  sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_$1"
+  sudo tar -C "${WD}/boot" -c . | xz -9 >"${SCRIPTDIR}/boot/$1.tar.xz"
+}
+
+
+restore_snapshot()
+{
+  if [ -z "${USE_EXT4}" ]; then
+    sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
+    [ -d "${WD}/${SUBVOL}" ] && sudo btrfs subvolume delete "${WD}/${SUBVOL}"
+    sudo btrfs sub snap "${WD}/${SUBVOL}_$1" "${WD}/${SUBVOL}"
+    sudo btrfs property set "${WD}/${SUBVOL}" compression zstd:15
+    sudo umount "${WD}"
+    sudo mkfs.msdos -n KOA-BOOT ${PARTS[0]}
+    sudo mount ${PARTS[0]} "${WD}"
+    sudo tar -C "${WD}" -xaf "${SCRIPTDIR}/boot/$1.tar.xz"
+    sudo umount "${WD}"
+  fi
 }
 
 
@@ -84,36 +110,50 @@ get_tarball()
 }
 
 
-prepare_target()
+# Creating the image file and partitions
+create_imgfile()
 {
-  # Creating the image file, partition and mount it
   [ -f "${IMG}" ] && rm "${IMG}"
   truncate -s "${IMGSIZE}" "${IMG}"
   parted "${IMG}" -s -- mklabel msdos \
     mkpart primary fat16 1MiB "${BOOTSIZE}" \
     mkpart primary btrfs "${BOOTSIZE}" 100%
+}
 
+
+create_loopdev()
+{
   LOOPDEV=( $(sudo losetup --find --show --partscan "$IMG") )
   PARTS=( "${LOOPDEV}p1" "${LOOPDEV}p2" )
+}
 
+
+format_filesystems()
+{
   sudo mkfs.msdos -n KOA-BOOT ${PARTS[0]}
-
   if [ -z "${USE_EXT4}" ]; then
     sudo mkfs.btrfs -f -L koa-root ${PARTS[1]}
-    ## btrfs snapshot magic
     sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
     sudo btrfs sub cre "${WD}/$SUBVOL"
-    sudo btrfs property set "${WD}/$SUBVOL" compression zstd
+    sudo btrfs property set "${WD}/$SUBVOL" compression zstd:15
     sudo umount "${WD}"
+  else
+    sudo mkfs.ext4 -L koa-root ${PARTS[1]}
+  fi
+}
+
+
+mount_filesystems()
+{
+  if [ -z "${USE_EXT4}" ]; then
     sudo mount ${PARTS[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
     sudo mkdir -p "${WD}/mnt/fs_root"
     sudo mount ${PARTS[1]} "${WD}/mnt/fs_root" -osubvolid=0
   else
-    sudo mkfs.ext4 -L koa-root ${PARTS[1]}
     sudo mount ${PARTS[1]} "${WD}"
   fi
 
-  sudo mkdir "${WD}/boot"
+  [ -d "${WD}/boot" ] || sudo mkdir "${WD}/boot"
   sudo mount ${PARTS[0]} "${WD}/boot"
 
   for dir in dev proc sys; do
@@ -126,24 +166,11 @@ prepare_target()
     sudo mount none "${WD}/${dir}" -t tmpfs
   done
 
-  [ -d "${WD}/var/cache/apk" ] || sudo mkdir -p "${WD}/var/cache/apk"
-  sudo mount --bind "${CACHE}" "${WD}/var/cache/apk"
+  [ -d "${WD}/var/cache/apk" ] || sudo mkdir -p "${WD}/var/cache/pacman"
+  sudo mount --bind "${CACHE}" "${WD}/var/cache/pacman"
 
-  [ -d "$WD/build" ] || sudo mkdir "$WD/build"
-  sudo mount --bind "$BUILDDIR" "$WD/build"
-}
-
-
-create_root_tree()
-{
-  # Extracting the tarball and preparing the chroot
-  sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
-
-  [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
-  [ -f "${WD}/run/systemd/resolve/resolv.conf" ] || sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
-
-  USRID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f3)
-  GRPID=$(cat "$WD/etc/passwd"|grep ^alarm | cut -d: -f4)
+  [ -d "${WD}/build" ] || sudo mkdir "${WD}/build"
+  sudo mount --bind "${BUILDDIR}" "${WD}/build"
 }
 
 
@@ -154,7 +181,7 @@ essential_setup()
     -e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
     "${WD}/etc/locale.gen"
 
-  sudo chroot "$WD" /bin/bash <<-EOF
+  sudo chroot "$WD" /bin/bash -l <<-EOF
 		set -ex
 		pacman-key --init
 		pacman-key --populate archlinuxarm
@@ -165,18 +192,23 @@ essential_setup()
 		pacman --noconfirm -S btrfs-progs
 		pacman --noconfirm -Su
 
-		pacman --noconfirm --needed -S vim sudo base-devel python3 git usbutils nginx polkit v4l-utils avahi
+		pacman --noconfirm --needed -S vim sudo base-devel python3 git usbutils nginx polkit v4l-utils avahi parted
 		# TODO: remove once development is finished
-		pacman --noconfirm -S mc screen pv man-db bash-completion parted
+		pacman --noconfirm -S mc screen pv man-db bash-completion 
 
-		usermod -aG wheel alarm
+    usermod -l klipper -d /home/klipper -m alarm
+    groupmod -n klipper alarm
+		usermod -aG wheel klipper
 		echo "${TARGET_HOSTNAME}" >/etc/hostname
+
+		git clone https://aur.archlinux.org/${AURHELPER}-bin.git
+		pushd ${AURHELPER}-bin
+		env EUID=1000 makepkg
+		pacman --noconfirm -U ${AURHELPER}-bin-*.pkg.*
+		popd
+		rm -rf ${AURHELPER}-bin
 	EOF
-}
 
-
-edit_system_configs()
-{
   sudo tee -a "$WD/etc/fstab" >/dev/null <<-EOF
 		/dev/mmcblk0p2 /mnt/fs_root btrfs defaults,compress=zstd:15,noatime 0 0
 		/dev/mmcblk0p1 /boot        msdos defaults                          0 2
@@ -223,6 +255,8 @@ edit_system_configs()
 	EOF
 
   echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' | sudo tee "${WD}/etc/sudoers.d/wheel-nopasswd" >/dev/null
+  sudo sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" "${WD}/etc/makepkg.conf"
+  # sudo sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" "${WD}/etc/makepkg.conf"
 }
 
 
@@ -231,7 +265,6 @@ build_mcu_in_docker()
 {
   pushd "${SCRIPTDIR}"
   docker build -t arch-build docker-env
-  #find "$BUILDDIR" -type d -exec sudo chmod 777 {} \;
   cp "${USERDIR}/mcu.config" "$BUILDDIR/"
   docker run -it --rm \
     -v "${BUILDDIR}/:/build/" \
@@ -273,58 +306,98 @@ process_user_dir()
 }
 
 
-create_snapshot()
-{
-  [ -z "${USE_EXT4}" ] || return
-  sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/$1"
-}
-
-
 cleanup()
 {
   echo "cleanup"
 }
 
 
+ensure_host_dirs()
+{
+  for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do
+    if [ ! -d "${dir}" ]; then
+      mkdir "${dir}"
+      chmod 777 "${dir}"
+    fi
+  done
+}
+
+
 ###############################################################################
 export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 . "${SCRIPTDIR}/koa-common.sh"
-parse_userdir $@
 
+declare -A SNAPSHOTS=( [tar]=1 [sys]=2 )
+
+highest=$(for num in $(echo ${SNAPSHOTS[@]}); do echo $num; done|sort -nr|head -n1)
+for script in "${SCRIPTDIR}"/app-install/??-*.sh; do
+  let highest++
+  SNAPSHOTS[$(echo $(basename ${script}) | sed -r 's/^..-(.*).sh/\1/')]=${highest}
+done
+
+parse_userdir $@
 apply_secrets
 parse_params $@
+
 check
 show_environment
 check_vars
 
-for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do [ -d "${dir}" ] || mkdir "${dir}"; done
+ensure_host_dirs
 
-get_tarball
-prepare_target
-create_root_tree
+if [ "${CHECKPOINT}" -eq 0 ]; then
+  get_tarball
+  create_imgfile
+fi
 
-sudo mount --bind "$CACHE" "$WD/var/cache/pacman"
+create_loopdev
 
-essential_setup
-edit_system_configs
+[ "${CHECKPOINT}" -eq 0 ] && format_filesystems
 
-create_snapshot "${SUBVOL}.sys"
+if [ "${SNAPSHOT}" ]; then restore_snapshot "${SNAPSHOT}"
+else rm "${SCRIPTDIR}"/boot/* || true; fi
 
-sudo chroot "$WD" /bin/bash -c "usermod -l klipper -d /home/klipper -m alarm && groupmod -n klipper alarm"
-echo "klipper ALL=(ALL:ALL) NOPASSWD: ALL" | sudo tee "${WD}/etc/sudoers.d/klipper-nopasswd" >/dev/null
+mount_filesystems
 
-cp "${SCRIPTDIR}/klipper_rpi.config" "$BUILDDIR/"
-cat "${SCRIPTDIR}/koa-setup.sh" | sudo chroot koa su -l klipper -c "/bin/env TRUSTED_NET=\"${TRUSTED_NET}\" /bin/bash"
+if [ "${CHECKPOINT}" -eq 0 ]; then
+  # Extracting the tarball
+  sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
+  create_snapshot "tar"
+fi
 
-build_mcu_in_docker
+# name servers
+[ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
+sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
+
+if [ "${CHECKPOINT}" -lt 2 ]; then
+  essential_setup
+  create_snapshot "sys"
+fi
+
+cp "${SCRIPTDIR}/klipper_rpi.config" "${WD}/tmp/"
+sudo tee -a "$WD/tmp/environment" >/dev/null <<-EOF
+	TRUSTED_NET=${TRUSTED_NET}
+  AURHELPER=${AURHELPER}
+  DEFAULT_UI=mainsail
+EOF
+
+for script in "${SCRIPTDIR}"/app-install/??-*.sh; do
+  snapshot=$(echo $(basename ${script}) | sed -r 's/^..-(.*).sh/\1/')
+  if [ ${SNAPSHOTS[${snapshot}]} -gt "${CHECKPOINT}" ]; then
+    cat "${script}" | sudo chroot koa su -l klipper -c "/bin/env TRUSTED_NET=\"${TRUSTED_NET}\" /bin/bash"
+    create_snapshot "${snapshot}"
+  fi
+done
+
+#build_mcu_in_docker
 
 # sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
 
 # process_user_dir
 
-sudo chown -R $(id -u):$(id -g) "$CACHE" "$BUILDDIR"
+sudo chown -R $(id -u):$(id -g) "${CACHE}" "${BUILDDIR}"
 
-sudo fuser -k "$WD" || true
-create_snapshot "${SUBVOL}.inst"
-sudo umount -R "$WD"
-sudo losetup -D "$IMG"
+sudo fuser -k "${WD}" || true
+create_snapshot "inst"
+sudo umount -R "${WD}"
+sudo losetup -d "${LOOPDEV}"

@@ -1,6 +1,7 @@
 /koa/
 /cache/
 /build/
+/boot/
 /tmp/
 /*.img*
 /ArchLinuxARM-rpi-*

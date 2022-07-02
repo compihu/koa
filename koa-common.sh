@@ -1,6 +1,7 @@
 #!/bin/bash
 set -ex
 
+AURHELPER=yay
 
 function parse_userdir
 {
@@ -19,7 +20,8 @@ function parse_userdir
       -v | --subvolume | \
       -h | --hostname | \
       -i | --wifi_ssid | \
-      -o | --wifi-passwd )
+      -o | --wifi-passwd | \
+      -f | --from )
         shift
         ;;
       -4 | --ext4 )
@@ -87,6 +89,10 @@ function parse_params
         WIFI_PASSWD="$2"
         shift
         ;;
+      -f | --from )
+        SNAPSHOT="$2"
+        shift
+        ;;
       * )
         echo "Unknown option $1."
         return 1
@@ -95,11 +101,21 @@ function parse_params
     shift
   done
 
+  if [ "${SNAPSHOT}" ]; then
+    CHECKPOINT=${SNAPSHOTS[${SNAPSHOT}]}
+    if [ -z "${CHECKPOINT}" ]; then
+      echo "Unkonwn snapshot to start from"
+      return 1
+    fi
+  else
+    CHECKPOINT=0
+  fi
+
   IMG="${IMG:-$SCRIPTDIR/koa.img}"
   WD="${WD:-$SCRIPTDIR/koa}"
   CACHE="${CACHE:-$SCRIPTDIR/cache}"
   BUILDDIR="${BUILDDIR:-$SCRIPTDIR/build}"
-  IMGSIZE="${IMGSIZE:-2500MB}"
+  IMGSIZE="${IMGSIZE:-4GB}"
   BOOTSIZE="${BOOTSIZE:-64MiB}"
   TARGET_HOSTNAME="${TARGET_HOSTNAME:-koa}"
   SUBVOL="${SUBVOL:-@koa_root}"
@@ -119,7 +135,7 @@ show_environment()
   echo "Wifi passwd: ${WIFI_PASSWD}"
   echo "Hostname:    ${TARGET_HOSTNAME}"
   echo "Trusted net: ${TRUSTED_NET}"
+  [ -z "${SNAPSHOT}" ] || echo "Start from:  ${SNAPSHOT}"
   echo "-------------------------------------------------"
   echo
 }
-
