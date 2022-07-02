@@ -16,16 +16,20 @@ TRUSTED_NET="${TRUSTED_NET:-$1}"
 # for development purposes
 # pacman --noconfirm -S mc screen pv man-db bash-completion parted
 
-# sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
-# sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
+sudo sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
+# sudo sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" /etc/makepkg.conf
 
+# Installing AUR helper of choice
 cd
-git clone https://aur.archlinux.org/$AH-bin.git
-pushd $AH-bin
+git clone "https://aur.archlinux.org/${AH}-bin.git"
+pushd "${AH}-bin"
 makepkg
-sudo pacman --noconfirm -U $AH-bin-*.pkg.*
+sudo pacman --noconfirm -U "${AH}"-bin-*.pkg.*
 popd
-rm -rf $AH-bin
+rm -rf "${AH}-bin"
+
+## Installing klipper
+sudo pacman -S --noconfirm libusb
 
 curl -s 'https://bootstrap.pypa.io/get-pip.py' | python3
 
@@ -33,7 +37,7 @@ git clone --depth 1 'https://github.com/Klipper3d/klipper.git'
 
 cp /build/klipper_rpi.config klipper/.config
 make -C klipper -j$(nproc)
-sudo cp klipper/out/klipper.elf /usr/local/sbin/klipper_mcu.elf
+sudo cp klipper/out/klipper.elf /usr/local/bin/klipper_mcu
 
 python3 -m venv klipper-venv
 klipper-venv/bin/python3 -m pip install --upgrade pip
@@ -42,6 +46,34 @@ pushd klipper
 ../klipper-venv/bin/python3 -m compileall klippy
 ../klipper-venv/bin/python3 klippy/chelper/__init__.py
 popd
+
+pwd
+mkdir klipper-config gcode-files
+
+sudo tee /etc/systemd/system/klipper.service <<-EOF
+	[Unit]
+	Description=3D printer firmware with motion planning on the host
+	After=network.target
+
+	[Install]
+	WantedBy=multi-user.target
+
+	[Service]
+	Type=simple
+	User=klipper
+	RemainAfterExit=no
+	Environment=PYTHONUNBUFFERED=1
+	ExecStart=/home/klipper/klipper-venv/bin/python /home/klipper/klipper/klippy/klippy.py /home/klipper/klipper-config/printer.cfg -I /run/klipper/sock -a /run/klipper/ud_sock -l /tmp/klippy.log
+	Nice=-5
+	Restart=always
+	RestartSec=10
+EOF
+
+sudo systemctl enable klipper.service
+
+
+## Installing moonraker
+"${AH}" -S --builddir /build --noconfirm --removemake --norebuild libgpiod
 
 # cat >/home/alarm/koa-user.sh <<-EOF
 # 	#!/usr/bin/bash
@@ -123,16 +155,16 @@ sudo usermod -a -G tty,video,audio klipper
 # 	}
 # EOF
 
-# # Klipper main configuration file
-# cat >/etc/klipper/printer.cfg <<-EOF
-# 	[include webui-klipper.cfg]
-# 	[include moonraker-klipper.cfg]
+# Klipper main configuration file
+cat >/home/klipper/klipper-config/printer.cfg <<-EOF
+	# [include webui-klipper.cfg]
+	# [include moonraker-klipper.cfg]
 
-# 	########################################
-# 	# Your printer configuration goes here #
-# 	########################################
+	########################################
+	# Your printer configuration goes here #
+	########################################
 	
-# EOF
+EOF
 
 # # copying / editing mainsail config files
 # ln=$(sed -n -e '/^\}$/=' /usr/share/doc/mainsail/mainsail-nginx.conf |tail -n1)
