@@ -49,26 +49,26 @@ check_vars()
 
 create_snapshot()
 {
+  local snapshot="$1"
   [ -z "${USE_EXT4}" ] || return
-  [ -d "${WD}/mnt/fs_root/${SUBVOL}_$1" ] && sudo btrfs subvolume delete "${WD}/mnt/fs_root/${SUBVOL}_$1"
-  sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_$1"
-  sudo tar -C "${WD}/boot" -c . | xz -9 >"${SCRIPTDIR}/boot/$1.tar.xz"
+  [ -d "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}" ] && sudo btrfs subvolume delete "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}"
+  sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}"
+  sudo tar -C "${WD}/boot" -c . | xz -9 >"${SNAPSHOTDIR}/${snapshot}-boot.tar.xz"
 }
 
 
 restore_snapshot()
 {
-  if [ -z "${USE_EXT4}" ]; then
-    sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
-    [ -d "${WD}/${SUBVOL}" ] && sudo btrfs subvolume delete "${WD}/${SUBVOL}"
-    sudo btrfs sub snap "${WD}/${SUBVOL}_$1" "${WD}/${SUBVOL}"
-    sudo btrfs property set "${WD}/${SUBVOL}" compression zstd:15
-    sudo umount "${WD}"
-    sudo mkfs.msdos -n KOA-BOOT ${PARTS[0]}
-    sudo mount ${PARTS[0]} "${WD}"
-    sudo tar -C "${WD}" -xaf "${SCRIPTDIR}/boot/$1.tar.xz"
-    sudo umount "${WD}"
-  fi
+  [ -z "${USE_EXT4}" ] || return
+  sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
+  [ -d "${WD}/${SUBVOL}" ] && sudo btrfs subvolume delete "${WD}/${SUBVOL}"
+  sudo btrfs sub snap "${WD}/${SUBVOL}_${SNAPSHOT}" "${WD}/${SUBVOL}"
+  sudo btrfs property set "${WD}/${SUBVOL}" compression zstd:15
+  sudo umount "${WD}"
+  sudo mkfs.msdos -n KOA-BOOT ${PARTS[0]}
+  sudo mount ${PARTS[0]} "${WD}"
+  sudo tar -C "${WD}" -xaf "${SNAPSHOTDIR}/${SNAPSHOT}-boot.tar.xz"
+  sudo umount "${WD}"
 }
 
 
@@ -107,6 +107,12 @@ get_tarball()
     exit false
   fi
   popd
+}
+
+
+populate_root()
+{
+  sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
 }
 
 
@@ -174,6 +180,33 @@ mount_filesystems()
 }
 
 
+cleanup_boot_snapshots()
+{
+  rm "${SCRIPTDIR}"/${SNAPHOTDIR}/* || true;
+}
+
+
+setup_resolver()
+{
+  [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
+  sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
+}
+
+
+upgrade()
+{
+  sudo chroot "$WD" /bin/bash -l <<-EOF
+		set -ex
+		pacman-key --init
+		pacman-key --populate archlinuxarm
+
+		pacman --noconfirm -Sy
+		pacman --noconfirm -S btrfs-progs
+		pacman --noconfirm -Su
+	EOF
+}
+
+
 essential_setup()
 {
   sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
@@ -182,23 +215,14 @@ essential_setup()
     "${WD}/etc/locale.gen"
 
   sudo chroot "$WD" /bin/bash -l <<-EOF
-		set -ex
-		pacman-key --init
-		pacman-key --populate archlinuxarm
-
 		locale-gen
-
-		pacman --noconfirm -Sy
-		pacman --noconfirm -S btrfs-progs
-		pacman --noconfirm -Su
-
 		pacman --noconfirm --needed -S vim sudo base-devel python3 git usbutils nginx polkit v4l-utils avahi parted
 		# TODO: remove once development is finished
 		pacman --noconfirm -S mc screen pv man-db bash-completion 
 
     usermod -l klipper -d /home/klipper -m alarm
     groupmod -n klipper alarm
-		usermod -aG wheel klipper
+		usermod -a -G tty,video,audio,wheel klipper
 		echo "${TARGET_HOSTNAME}" >/etc/hostname
 
 		git clone https://aur.archlinux.org/${AURHELPER}-bin.git
@@ -239,7 +263,12 @@ essential_setup()
 		}
 	EOF
 
-  sudo sed -i -E 's/(^-?session\s+.*pam_systemd.so.*)/#\1/' "${WD}/etc/pam.d/system-login"
+  sudo chroot "$WD" /bin/bash -l <<-EOF
+		systemctl enable wpa_supplicant@wlan0
+	EOF
+
+  # seems to fix slow ssh root login problem
+  sudo sed -i -E 's/(^-?session\s+.*pam_systemd.so.*)/-\1/' "${WD}/etc/pam.d/system-login"
 
   sudo sed -i -e 's/rw/rootflags=compress=zstd:15,subvol=@koa_root,relatime rw/' \
    -e 's/ console=serial0,115200//' \
@@ -287,7 +316,7 @@ apply_fileprops()
 
 process_user_dir()
 {
-  [ -d "${USERDIR}/files" ] && sudo cp -r "${USERDIR}"/files/* "$WD/"
+  [ -d "${USERDIR}/files" ] && sudo cp -rv "${USERDIR}"/files/* "$WD/"
   if [ -d "${USERDIR}/scripts" ]; then
     for script in "${USERDIR}"/scripts/*; do
       if [ -f "$script" -a -x "$script" ]; then
@@ -323,11 +352,33 @@ ensure_host_dirs()
 }
 
 
+start_from_scratch()
+{
+  get_tarball
+  cleanup_boot_snapshots
+  create_imgfile
+  create_loopdev
+  format_filesystems
+  mount_filesystems
+  populate_root
+  setup_resolver
+}
+
+
+start_from_snapshot()
+{
+  create_loopdev
+  restore_snapshot
+  mount_filesystems
+  setup_resolver
+}
+
+
 ###############################################################################
 export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 . "${SCRIPTDIR}/koa-common.sh"
 
-declare -A SNAPSHOTS=( [tar]=1 [sys]=2 )
+declare -A SNAPSHOTS=( [tarball]=1 [upgrade]=2 [sysconf]=3 )
 
 highest=$(for num in $(echo ${SNAPSHOTS[@]}); do echo $num; done|sort -nr|head -n1)
 for script in "${SCRIPTDIR}"/app-install/??-*.sh; do
@@ -346,54 +397,46 @@ check_vars
 ensure_host_dirs
 
 if [ "${CHECKPOINT}" -eq 0 ]; then
-  get_tarball
-  create_imgfile
+  start_from_scratch
+  create_snapshot "tarball"
+else
+  start_from_snapshot
 fi
-
-create_loopdev
-
-[ "${CHECKPOINT}" -eq 0 ] && format_filesystems
-
-if [ "${SNAPSHOT}" ]; then restore_snapshot "${SNAPSHOT}"
-else rm "${SCRIPTDIR}"/boot/* || true; fi
-
-mount_filesystems
-
-if [ "${CHECKPOINT}" -eq 0 ]; then
-  # Extracting the tarball
-  sudo bsdtar -xpf "${SCRIPTDIR}/${ARCHIVE}" -C "${WD}"
-  create_snapshot "tar"
-fi
-
-# name servers
-[ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
-sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"
 
 if [ "${CHECKPOINT}" -lt 2 ]; then
+  upgrade
+  create_snapshot "upgrade"
+fi
+
+if [ "${CHECKPOINT}" -lt 3 ]; then
   essential_setup
-  create_snapshot "sys"
+  create_snapshot "sysconf"
 fi
 
 cp "${SCRIPTDIR}/klipper_rpi.config" "${WD}/tmp/"
 sudo tee -a "$WD/tmp/environment" >/dev/null <<-EOF
-	TRUSTED_NET=${TRUSTED_NET}
-  AURHELPER=${AURHELPER}
-  DEFAULT_UI=mainsail
+	TRUSTED_NET="${TRUSTED_NET}"
+	AURHELPER="${AURHELPER}"
+	DEFAULT_UI=mainsail
+	BASE_PATH=/home/klipper
+	CONFIG_PATH="\${BASE_PATH}/klipper-config"
+	GCODE_SPOOL="\${BASE_PATH}/gcode-spool"
+  LOG_PATH=/tmp/klipper-logs
 EOF
 
 for script in "${SCRIPTDIR}"/app-install/??-*.sh; do
   snapshot=$(echo $(basename ${script}) | sed -r 's/^..-(.*).sh/\1/')
   if [ ${SNAPSHOTS[${snapshot}]} -gt "${CHECKPOINT}" ]; then
-    cat "${script}" | sudo chroot koa su -l klipper -c "/bin/env TRUSTED_NET=\"${TRUSTED_NET}\" /bin/bash"
+    cat "${script}" | sudo chroot "${WD}" su -l klipper -c "/bin/env TRUSTED_NET=\"${TRUSTED_NET}\" /bin/bash"
     create_snapshot "${snapshot}"
   fi
 done
 
-#build_mcu_in_docker
+build_mcu_in_docker
 
-# sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /etc/klipper /var/cache/klipper /var/lib/moonraker
+sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /home/klipper
 
-# process_user_dir
+process_user_dir
 
 sudo chown -R $(id -u):$(id -g) "${CACHE}" "${BUILDDIR}"
 
