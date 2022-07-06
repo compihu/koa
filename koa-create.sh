@@ -180,9 +180,9 @@ mount_filesystems()
 }
 
 
-cleanup_boot_snapshots()
+cleanup_snapshots()
 {
-	if [ -d "${SNAPSHOTDIR}" ]; then rm "${SNAPSHOTDIR}"/*;
+	if [ -d "${SNAPSHOTDIR}" ]; then rm "${SNAPSHOTDIR}"/* || true;
 	else mkdir "${SNAPSHOTDIR}"; fi
 }
 
@@ -196,8 +196,15 @@ setup_resolver()
 
 upgrade()
 {
+	sudo sed -i \
+		-e "s/#en_US.UTF-8/en_US.UTF-8/" \
+		-e "s/#hu_HU.UTF-8/hu_HU.UTF-8/" \
+		-e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
+		"${WD}/etc/locale.gen"
+
 	sudo chroot "$WD" /bin/bash -l <<-EOF
 		set -ex
+		locale-gen
 		pacman-key --init
 		pacman-key --populate archlinuxarm
 
@@ -210,20 +217,15 @@ upgrade()
 
 system_setup()
 {
-	sudo sed -i -e "s/#en_US.UTF-8/en_US.UTF-8/" \
-		-e "s/#hu_HU.UTF-8/hu_HU.UTF-8/" \
-		-e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
-		"${WD}/etc/locale.gen"
-
 	sudo chroot "$WD" /bin/bash -l <<-EOF
-		locale-gen
+		set -ex
 		pacman --noconfirm --needed -S vim sudo base-devel python3 git usbutils nginx polkit v4l-utils avahi parted
 		# TODO: remove once development is finished
 		pacman --noconfirm -S mc screen pv man-db bash-completion 
 
-		usermod -l klipper -d /home/klipper -m alarm
-		groupmod -n klipper alarm
-		usermod -a -G tty,video,audio,wheel klipper
+		usermod -l "${TARGET_USER}" -d "/home/${TARGET_USER}" -m alarm
+		groupmod -n "${TARGET_USER}" alarm
+		usermod -a -G tty,video,audio,wheel,uucp "${TARGET_USER}"
 		echo "${TARGET_HOSTNAME}" >/etc/hostname
 
 		git clone https://aur.archlinux.org/${AURHELPER}-bin.git
@@ -357,7 +359,7 @@ ensure_host_dirs()
 start_from_scratch()
 {
 	get_tarball
-	cleanup_boot_snapshots
+	cleanup_snapshots
 	create_imgfile
 	create_loopdev
 	format_filesystems
@@ -422,7 +424,8 @@ sudo tee -a "$WD/tmp/environment" >/dev/null <<-EOF
 	TRUSTED_NET="${TRUSTED_NET}"
 	AURHELPER="${AURHELPER}"
 	DEFAULT_UI=mainsail
-	BASE_PATH=/home/klipper
+	TARGET_USER="${TARGET_USER}"
+	BASE_PATH=/home/"${TARGET_USER}"
 	CONFIG_PATH="\${BASE_PATH}/klipper-config"
 	GCODE_SPOOL="\${BASE_PATH}/gcode-spool"
 	LOG_PATH=/tmp/klipper-logs

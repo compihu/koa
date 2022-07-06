@@ -9,7 +9,7 @@ INSTALL_PATH="${BASE_PATH}/klipper"
 
 sudo pacman -S --noconfirm libusb
 
-if[-d /build/klipper]; then
+if [ -d /build/klipper ]; then
     cp -r /build/klipper ./
     git -C klipper pull
 else
@@ -40,7 +40,7 @@ sudo tee /etc/systemd/system/klipper.service >>/dev/null <<-EOF
 
 	[Service]
 	Type=simple
-	User=klipper
+	User=${TARGET_USER}
 	RemainAfterExit=no
 	Environment=PYTHONUNBUFFERED=1
 	ExecStart=${BASE_PATH}/${VENV}/bin/python3 ${INSTALL_PATH}/klippy/klippy.py ${CONFIG_PATH}/printer.cfg -I /run/klipper/sock -a /run/klipper/ud_sock -l "${LOG_PATH}/klippy.log"

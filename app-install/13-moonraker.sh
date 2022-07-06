@@ -25,7 +25,7 @@ sudo tee /etc/systemd/system/moonraker.service <<-EOF
 
 	[Service]
 	Type=simple
-	User=klipper
+	User=${TARGET_USER}
 	#SupplementaryGroups=moonraker-admin
 	SyslogIdentifier=moonraker
 	RemainAfterExit=yes
@@ -70,7 +70,7 @@ cat >${CONFIG_PATH}/moonraker.conf <<-EOF
 	#   files to this directory.  Note that this may not be the system root
 	#   (ie: "/") and moonraker must have read and write access permissions
 	#   for this directory.
-	config_path: /home/klipper/klipper-config
+	config_path: ${BASE_PATH}/klipper-config
 	#   An optional path to a directory where log files are located.  Users may
 	#   configure various applications to store logs here and Moonraker will serve
 	#   them at "/server/files/logs/*".  The default is no log paths.

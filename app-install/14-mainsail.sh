@@ -84,7 +84,7 @@ sudo tee /etc/nginx/mainsail-nginx.conf >/dev/null <<- EOF
 	    gzip_types text/plain text/css text/xml text/javascript application/x-javascript application/json application/xml;
 
 	    #web_path from mainsail static files
-	    root /home/klipper/mainsail;
+	    root ${BASE_PATH}/mainsail;
 
 	    index index.html;
 	    server_name _;
