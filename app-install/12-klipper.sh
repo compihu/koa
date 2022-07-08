@@ -9,7 +9,12 @@ INSTALL_PATH="${BASE_PATH}/klipper"
 
 sudo pacman -S --noconfirm libusb
 
-git clone --depth 1 'https://github.com/Klipper3d/klipper.git'
+if[-d /build/klipper]; then
+    cp -r /build/klipper ./
+    git -C klipper pull
+else
+    git clone --depth 1 'https://github.com/Klipper3d/klipper.git'
+fi
 
 cp /tmp/klipper_rpi.config klipper/.config
 make -C klipper -j$(nproc)
