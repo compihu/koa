@@ -7,8 +7,12 @@ set -ex
 VENV=moonraker-venv
 INSTALL_PATH="${BASE_PATH}/moonraker"
 
-"${AURHELPER}" -S --builddir /build --noconfirm --removemake --norebuild libgpiod
-git clone --depth 1 'https://github.com/Arksine/moonraker.git'
+sudo pacman --noconfirm --needed -S libsodium packagekit
+"${AURHELPER}" -S --needed --builddir /build --noconfirm --removemake --norebuild libgpiod
+
+sudo groupadd -f -r moonraker-admin
+
+git clone 'https://github.com/Arksine/moonraker.git'
 
 python3 -m venv "${VENV}"
 "${VENV}/bin/python3" -m pip install --upgrade pip
@@ -16,6 +20,8 @@ python3 -m venv "${VENV}"
 pushd moonraker
 "../${VENV}/bin/python3" -m compileall -o 0 -o 1 moonraker
 popd
+
+moonraker/scripts/set-policykit-rules.sh
 
 sudo tee /etc/systemd/system/moonraker.service <<-EOF
 	[Unit]
@@ -26,7 +32,7 @@ sudo tee /etc/systemd/system/moonraker.service <<-EOF
 	[Service]
 	Type=simple
 	User=${TARGET_USER}
-	#SupplementaryGroups=moonraker-admin
+	SupplementaryGroups=moonraker-admin
 	SyslogIdentifier=moonraker
 	RemainAfterExit=yes
 	ExecStart=${BASE_PATH}/${VENV}/bin/python3 ${INSTALL_PATH}/moonraker/moonraker.py -c ${CONFIG_PATH}/moonraker.conf -n
@@ -74,7 +80,7 @@ cat >${CONFIG_PATH}/moonraker.conf <<-EOF
 	#   An optional path to a directory where log files are located.  Users may
 	#   configure various applications to store logs here and Moonraker will serve
 	#   them at "/server/files/logs/*".  The default is no log paths.
-	log_path: /tmp/log
+	log_path: /tmp/klipper-logs
 	#   When set to True the file manager will add uploads to the job_queue when
 	#   the `start_print` flag has been set.  The default if False.
 	#queue_gcode_uploads: False

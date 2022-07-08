@@ -7,13 +7,13 @@ set -ex
 VENV=klippy-venv
 INSTALL_PATH="${BASE_PATH}/klipper"
 
-sudo pacman -S --noconfirm libusb
+sudo pacman --noconfirm --needed -S  libusb
 
 if [ -d /build/klipper ]; then
     cp -r /build/klipper ./
     git -C klipper pull
 else
-    git clone --depth 1 'https://github.com/Klipper3d/klipper.git'
+    git clone 'https://github.com/Klipper3d/klipper.git'
 fi
 
 cp /tmp/klipper_rpi.config klipper/.config
@@ -61,6 +61,6 @@ cat >"${CONFIG_PATH}/printer.cfg" <<-EOF
 EOF
 
 sudo tee /etc/tmpfiles.d/klipper.conf >>/dev/null <<-EOF
-	d ${LOG_PATH} 2775 klipper klipper - -
-	d /run/klipper 0755 klipper tty - -
+	d ${LOG_PATH} 2775 ${TARGET_USER} ${TARGET_USER} - -
+	d /run/klipper 0755 ${TARGET_USER} tty - -
 EOF

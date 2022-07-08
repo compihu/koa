@@ -286,6 +286,13 @@ system_setup()
 		dtparam=spi=on
 	EOF
 
+	sudo sed -i -E \
+			-e 's/^#?(Storage)=.*$/\1=volatile/' \
+			-e 's/^#?Compress)=.*$/\1=true/' \
+			-e 's/^#?(RuntimeMaxUse)=.*$/\1=16M' \
+			"${WD}/etc/systemd/journald.conf"
+	
+	# TODO: tune this later
 	echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' | sudo tee "${WD}/etc/sudoers.d/wheel-nopasswd" >/dev/null
 	sudo sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" "${WD}/etc/makepkg.conf"
 	# sudo sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" "${WD}/etc/makepkg.conf"
@@ -311,7 +318,7 @@ build_in_docker()
 
 apply_fileprops()
 {
-	local path=$(echo "${WD}/$1" | sed -E 's#/+#/#g')
+	local path=$(echo "${WD}/$1" | sed -E 's#/+#/#g' | envsubst)
 	if [ ! -e "${path}" ]; then sudo mkdir -p "${path}"; fi
 	sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R $2 $1"
 	[ -z "$3" ] || sudo chroot "$WD" /bin/bash -c "/usr/bin/chmod $3 $1"
@@ -421,25 +428,25 @@ fi
 
 cp "${SCRIPTDIR}/klipper_rpi.config" "${WD}/tmp/"
 sudo tee -a "$WD/tmp/environment" >/dev/null <<-EOF
-	TRUSTED_NET="${TRUSTED_NET}"
-	AURHELPER="${AURHELPER}"
-	DEFAULT_UI=mainsail
-	TARGET_USER="${TARGET_USER}"
-	BASE_PATH=/home/"${TARGET_USER}"
-	CONFIG_PATH="\${BASE_PATH}/klipper-config"
-	GCODE_SPOOL="\${BASE_PATH}/gcode-spool"
-	LOG_PATH=/tmp/klipper-logs
+	export TRUSTED_NET="${TRUSTED_NET}"
+	export AURHELPER="${AURHELPER}"
+	export DEFAULT_UI=mainsail
+	export TARGET_USER="${TARGET_USER}"
+	export BASE_PATH=/home/"${TARGET_USER}"
+	export CONFIG_PATH="\${BASE_PATH}/klipper-config"
+	export GCODE_SPOOL="\${BASE_PATH}/gcode-spool"
+	export LOG_PATH=/tmp/klipper-logs
 EOF
 
 for script in "${SCRIPTDIR}"/app-install/??-*.sh; do
 	snapshot=$(echo $(basename ${script}) | sed -r 's/^..-(.*).sh/\1/')
 	if [ ${SNAPSHOTS[${snapshot}]} -gt "${CHECKPOINT}" ]; then
-		cat "${script}" | sudo chroot "${WD}" su -l klipper -c "/bin/env TRUSTED_NET=\"${TRUSTED_NET}\" /bin/bash"
+		cat "${script}" | sudo chroot "${WD}" su -l "${TARGET_USER}" -c "/bin/env TRUSTED_NET=\"${TRUSTED_NET}\" /bin/bash"
 		create_snapshot "${snapshot}"
 	fi
 done
 
-sudo chroot "$WD" /usr/bin/chown -R klipper:klipper /home/klipper
+sudo chroot "$WD" /usr/bin/chown -R "${TARGET_USER}":"${TARGET_USER}" "/home/${TARGET_USER}"
 
 process_user_dir
 

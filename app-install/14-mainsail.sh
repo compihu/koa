@@ -8,8 +8,10 @@ set -ex
 mkdir mainsail
 tar -C mainsail -xaf /build/mainsail.tar.gz
 
-sudo mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.ori
+chmod g+x .
+sudo usermod -aG "${TARGET_USER}" http
 
+sudo mv /etc/nginx/nginx.conf /etc/nginx/nginx.conf.ori
 sudo tee /etc/nginx/nginx.conf >/dev/null <<-EOF
 	user http;
 	worker_processes  1;

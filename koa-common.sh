@@ -114,17 +114,17 @@ function parse_params
     CHECKPOINT=0
   fi
 
-  IMG="${IMG:-$SCRIPTDIR/koa.img}"
-  WD="${WD:-$SCRIPTDIR/target}"
-  CACHE="${CACHE:-$SCRIPTDIR/cache}"
-  BUILDDIR="${BUILDDIR:-$SCRIPTDIR/build}"
-  IMGSIZE="${IMGSIZE:-2500MB}"
-  BOOTSIZE="${BOOTSIZE:-64MiB}"
-  TARGET_HOSTNAME="${TARGET_HOSTNAME:-koa}"
-  SUBVOL="${SUBVOL:-@koa_root}"
-  AURHELPER="${AURHELPER:-yay}"
-  SNAPSHOTDIR="${SNAPSHOTDIR:-$SCRIPTDIR/snapshots}"
-  TARGET_USER="${TARGET_USER:-printer"
+  export IMG="${IMG:-$SCRIPTDIR/koa.img}"
+  export WD="${WD:-$SCRIPTDIR/target}"
+  export CACHE="${CACHE:-$SCRIPTDIR/cache}"
+  export BUILDDIR="${BUILDDIR:-$SCRIPTDIR/build}"
+  export IMGSIZE="${IMGSIZE:-2500MB}"
+  export BOOTSIZE="${BOOTSIZE:-64MiB}"
+  export TARGET_HOSTNAME="${TARGET_HOSTNAME:-koa}"
+  export SUBVOL="${SUBVOL:-@koa_root}"
+  export AURHELPER="${AURHELPER:-yay}"
+  export SNAPSHOTDIR="${SNAPSHOTDIR:-$SCRIPTDIR/snapshots}"
+  export TARGET_USER="${TARGET_USER:-printer}"
 }
 
 
