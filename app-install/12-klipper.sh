@@ -4,7 +4,7 @@ set -ex
 . /tmp/environment
 
 ## Installing klipper
-VENV=klippy-venv
+VENV=klippy-env
 INSTALL_PATH="${BASE_PATH}/klipper"
 
 sudo pacman --noconfirm --needed -S  libusb

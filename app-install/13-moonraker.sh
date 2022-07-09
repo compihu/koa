@@ -4,7 +4,7 @@ set -ex
 . /tmp/environment
 
 ## Installing moonraker
-VENV=moonraker-venv
+VENV=moonraker-env
 INSTALL_PATH="${BASE_PATH}/moonraker"
 
 sudo pacman --noconfirm --needed -S libsodium packagekit
