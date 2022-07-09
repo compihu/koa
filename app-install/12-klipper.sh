@@ -30,7 +30,7 @@ popd
 
 mkdir "${CONFIG_PATH}" "${GCODE_SPOOL}"
 
-sudo tee /etc/systemd/system/klipper.service >>/dev/null <<-EOF
+sudo tee /etc/systemd/system/klipper.service >/dev/null <<-EOF
 	[Unit]
 	Description=3D printer firmware with motion planning on the host
 	After=network.target
@@ -51,8 +51,26 @@ EOF
 
 sudo systemctl enable klipper.service
 
+
+sudo tee /etc/systemd/system/klipper-mcu.service >/dev/null <<-EOF
+	[Unit]
+	Description=Klipper MCU on Raspberry Pi
+	After=local-fs.target
+	Before=klipper.service
+
+	[Install]
+	WantedBy=klipper.service
+
+	[Service]
+	Type=simple
+	ExecStart=/usr/local/bin/klipper_mcu -r
+	Restart=always
+	RestartSec=10
+EOF
+
+
 cat >"${CONFIG_PATH}/printer.cfg" <<-EOF
-	# [include webui-klipper.cfg]
+	[include mainsail-klipper.cfg]
 	[include moonraker-klipper.cfg]
 
 	########################################

@@ -35,7 +35,7 @@ for dir in run tmp; do
 done
 
 [ -d "${WD}/build" ] && [ -d "${BUILDDIR}" ] && sudo mount --bind "${BUILDDIR}" "${WD}/build"
-[ -d "$WD/var/cache/apk" ] && [ -d "${CACHE}" ] && sudo mount --bind "${CACHE}" "${WD}/var/cache/apk"
+[ -d "$WD/var/cache/pacman" ] && [ -d "${CACHE}" ] && sudo mount --bind "${CACHE}" "${WD}/var/cache/pacman"
 
 [ -d "${WD}/run/systemd/resolve" ] || sudo mkdir -p "${WD}/run/systemd/resolve"
 [ -f "${WD}/run/systemd/resolve/resolv.conf" ] || sudo cp -L /etc/resolv.conf "${WD}/run/systemd/resolve/"

@@ -4,7 +4,7 @@ cd /build
 if [ -d klipper ]; then
   git -C klipper pull
 else 
-  git clone --depth 1 'https://github.com/Klipper3d/klipper.git'
+  git clone 'https://github.com/Klipper3d/klipper.git'
 fi
 cp mcu.config klipper/.config
 pushd klipper

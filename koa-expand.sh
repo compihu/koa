@@ -7,8 +7,8 @@ export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 parse_params $@
 
 if [ ! -b "${IMG}" ]; then
-  echo "Input is not a block device!"
-  exit 1
+	echo "Input is not a block device!"
+	exit 1
 fi
 
 [ -d "${WD}" ] || mkdir "${WD}"

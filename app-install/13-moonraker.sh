@@ -157,6 +157,14 @@ cat >${CONFIG_PATH}/moonraker.conf <<-EOF
 	#[octoprint_compat]
 
 	[history]
+
+	[update_manager]
+	refresh_interval: 168 
+
+	[update_manager mainsail]
+	type: web
+	repo: mainsail-crew/mainsail
+	path: ~/mainsail
 EOF
 
 cat >"${CONFIG_PATH}/moonraker-klipper.cfg" <<-EOF

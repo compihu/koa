@@ -61,6 +61,7 @@ restore_snapshot()
 {
 	[ -z "${USE_EXT4}" ] || return
 	sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
+	MOUNTED=1
 
 	local ourid=${SNAPSHOTS[$SNAPSHOT]}
 	local snapshot
@@ -76,10 +77,13 @@ restore_snapshot()
 	sudo btrfs sub snap "${WD}/${SUBVOL}_${SNAPSHOT}" "${WD}/${SUBVOL}"
 	sudo btrfs property set "${WD}/${SUBVOL}" compression zstd:15
 	sudo umount "${WD}"
+	unset MOUNTED
 	sudo mkfs.msdos -n KOA-BOOT ${PARTS[0]}
 	sudo mount ${PARTS[0]} "${WD}"
+	MOUNTED=1
 	sudo tar -C "${WD}" -xaf "${SNAPSHOTDIR}/${SNAPSHOT}-boot.tar.xz"
 	sudo umount "${WD}"
+	unset MOUNTED
 }
 
 
@@ -164,10 +168,12 @@ mount_filesystems()
 {
 	if [ -z "${USE_EXT4}" ]; then
 		sudo mount ${PARTS[1]} "${WD}" "-ocompress=zstd:15,subvol=$SUBVOL"
+		MOUNTED=1
 		sudo mkdir -p "${WD}/mnt/fs_root"
 		sudo mount ${PARTS[1]} "${WD}/mnt/fs_root" -osubvolid=0
 	else
 		sudo mount ${PARTS[1]} "${WD}"
+		MOUNTED=1
 	fi
 
 	[ -d "${WD}/boot" ] || sudo mkdir "${WD}/boot"
@@ -183,7 +189,7 @@ mount_filesystems()
 		sudo mount none "${WD}/${dir}" -t tmpfs
 	done
 
-	[ -d "${WD}/var/cache/apk" ] || sudo mkdir -p "${WD}/var/cache/pacman"
+	[ -d "${WD}/var/cache/pacman" ] || sudo mkdir -p "${WD}/var/cache/pacman"
 	sudo mount --bind "${CACHE}" "${WD}/var/cache/pacman"
 
 	[ -d "${WD}/build" ] || sudo mkdir "${WD}/build"
@@ -213,7 +219,7 @@ upgrade()
 		-e "s/#nl_NL.UTF-8/nl_NL.UTF-8/" \
 		"${WD}/etc/locale.gen"
 
-	sudo chroot "$WD" /bin/bash -l <<-EOF
+	sudo chroot "${WD}" /bin/bash -l <<-EOF
 		set -ex
 		locale-gen
 		pacman-key --init
@@ -341,12 +347,12 @@ process_user_dir()
 	[ -d "${USERDIR}/files" ] && sudo cp -rv "${USERDIR}"/files/* "$WD/"
 	if [ -d "${USERDIR}/scripts" ]; then
 		for script in "${USERDIR}"/scripts/*; do
-			if [ -f "$script" -a -x "$script" ]; then
-				sudo cp "$script" "$WD/user-script.sh"
-				sudo chroot "$WD" /bin/bash -c /user-script.sh
+			if [ -f "${script}" -a -x "${script}" ]; then
+				sudo cp "${script}" "${WD}/user-script.sh"
+				sudo chroot "${WD}" /bin/bash -c /user-script.sh
 			fi
 		done
-		sudo rm "$WD/user-script.sh" || true
+		sudo rm "${WD}/user-script.sh" || true
 	fi
 
 	if [ -f "${USERDIR}"/fileprops ]; then
@@ -359,7 +365,13 @@ process_user_dir()
 
 cleanup()
 {
-	echo "cleanup"
+	if [ "${LOOPDEV}" ]; then
+		if [ "${MOUNTED}" ]; then
+			sudo fuser -k "${WD}" || true
+			sudo umount -R "${WD}"
+		fi
+		sudo losetup -d "${LOOPDEV}"
+	fi
 }
 
 
@@ -409,6 +421,11 @@ done
 let highest++
 SNAPSHOTS[inst]=${highest}
 
+unset LOOPDEV
+unset MOUNTED
+
+trap cleanup EXIT
+
 parse_userdir $@
 apply_secrets
 parse_params $@
@@ -419,7 +436,7 @@ check_vars
 
 ensure_host_dirs
 
-#build_in_docker
+build_in_docker
 
 if [ "${CHECKPOINT}" -eq 0 ]; then
 	start_from_scratch
@@ -464,7 +481,4 @@ process_user_dir
 
 sudo chown -R $(id -u):$(id -g) "${CACHE}" "${BUILDDIR}"
 
-sudo fuser -k "${WD}" || true
 create_snapshot "inst"
-sudo umount -R "${WD}"
-sudo losetup -d "${LOOPDEV}"
