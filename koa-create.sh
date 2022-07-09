@@ -61,6 +61,17 @@ restore_snapshot()
 {
 	[ -z "${USE_EXT4}" ] || return
 	sudo mount ${PARTS[1]} "${WD}" -ocompress=zstd:15
+
+	local ourid=${SNAPSHOTS[$SNAPSHOT]}
+	local snapshot
+	for snapshot in "${!SNAPSHOTS[@]}"; do
+		if [ ${SNAPSHOTS[$snapshot]} -gt "${ourid}" ]; then
+			echo "Removing shanpshot ${snapshot}"
+			[ -d "${WD}/${SUBVOL}_${snapshot}" ] && sudo btrfs subvolume delete "${WD}/${SUBVOL}_${snapshot}"
+			[ -f "${SNAPSHOTDIR}/${snapshot}-boot.tar.xz" ] && rm "${SNAPSHOTDIR}/${snapshot}-boot.tar.xz"
+		fi
+	done
+
 	[ -d "${WD}/${SUBVOL}" ] && sudo btrfs subvolume delete "${WD}/${SUBVOL}"
 	sudo btrfs sub snap "${WD}/${SUBVOL}_${SNAPSHOT}" "${WD}/${SUBVOL}"
 	sudo btrfs property set "${WD}/${SUBVOL}" compression zstd:15
@@ -288,8 +299,8 @@ system_setup()
 
 	sudo sed -i -E \
 			-e 's/^#?(Storage)=.*$/\1=volatile/' \
-			-e 's/^#?Compress)=.*$/\1=true/' \
-			-e 's/^#?(RuntimeMaxUse)=.*$/\1=16M' \
+			-e 's/^#?(Compress)=.*$/\1=true/' \
+			-e 's/^#?(RuntimeMaxUse)=.*$/\1=16M/' \
 			"${WD}/etc/systemd/journald.conf"
 	
 	# TODO: tune this later
@@ -390,12 +401,13 @@ export SCRIPTDIR="$( cd -- "$(dirname "$0")" >/dev/null 2>&1 ; pwd -P )"
 . "${SCRIPTDIR}/koa-common.sh"
 
 declare -A SNAPSHOTS=( [tarball]=1 [upgrade]=2 [sysconf]=3 )
-
 highest=$(for num in $(echo ${SNAPSHOTS[@]}); do echo $num; done|sort -nr|head -n1)
 for script in "${SCRIPTDIR}"/app-install/??-*.sh; do
 	let highest++
 	SNAPSHOTS[$(echo $(basename ${script}) | sed -r 's/^..-(.*).sh/\1/')]=${highest}
 done
+let highest++
+SNAPSHOTS[inst]=${highest}
 
 parse_userdir $@
 apply_secrets
