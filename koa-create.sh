@@ -236,9 +236,9 @@ system_setup()
 {
 	sudo chroot "$WD" /bin/bash -l <<-EOF
 		set -ex
-		pacman --noconfirm --needed -S vim sudo base-devel python3 git usbutils nginx polkit v4l-utils avahi parted
+		pacman --noconfirm --needed -S sudo base-devel python3 python-setuptools git usbutils nginx polkit v4l-utils avahi parted
 		# TODO: remove once development is finished
-		pacman --noconfirm -S mc screen pv man-db bash-completion 
+		pacman --noconfirm -S vim mc screen man-db bash-completion
 
 		usermod -l "${TARGET_USER}" -d "/home/${TARGET_USER}" -m alarm
 		groupmod -n "${TARGET_USER}" alarm
