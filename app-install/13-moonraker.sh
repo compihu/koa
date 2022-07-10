@@ -7,7 +7,7 @@ set -ex
 VENV=moonraker-env
 INSTALL_PATH="${BASE_PATH}/moonraker"
 
-sudo pacman --noconfirm --needed -S libsodium packagekit
+sudo pacman --noconfirm --needed -S libsodium
 "${AURHELPER}" -S --needed --builddir /build --noconfirm --removemake --norebuild libgpiod
 
 sudo groupadd -f -r moonraker-admin

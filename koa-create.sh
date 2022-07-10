@@ -49,8 +49,9 @@ check_vars()
 
 create_snapshot()
 {
+	[ "${CREATE_SNAPSHOTS}" ] || [ -z "${USE_EXT4}" ] || return
+
 	local snapshot="$1"
-	[ -z "${USE_EXT4}" ] || return
 	[ -d "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}" ] && sudo btrfs subvolume delete "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}"
 	sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}"
 	sudo tar -C "${WD}/boot" -c . | xz -9 >"${SNAPSHOTDIR}/${snapshot}-boot.tar.xz"
@@ -240,6 +241,8 @@ system_setup()
 		# TODO: remove once development is finished
 		pacman --noconfirm -S vim mc screen man-db bash-completion
 
+		systemctl enable avahi-daemon.service
+
 		usermod -l "${TARGET_USER}" -d "/home/${TARGET_USER}" -m alarm
 		groupmod -n "${TARGET_USER}" alarm
 		usermod -a -G tty,video,audio,wheel,uucp "${TARGET_USER}"
@@ -335,10 +338,12 @@ build_in_docker()
 
 apply_fileprops()
 {
-	local path=$(echo "${WD}/$1" | sed -E 's#/+#/#g' | envsubst)
-	if [ ! -e "${path}" ]; then sudo mkdir -p "${path}"; fi
-	sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R $2 $1"
-	[ -z "$3" ] || sudo chroot "$WD" /bin/bash -c "/usr/bin/chmod $3 $1"
+	local full_path=$(echo "${WD}/$1" | sed -E 's#/+#/#g' | envsubst)
+	local path=$(echo "$1" | envsubst)
+	local owner=$(echo "$2" | envsubst)
+	if [ ! -e "${full_path}" ]; then sudo mkdir -p "${full_path}"; fi
+	sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R ${owner} ${path}"
+	[ -z "$3" ] || sudo chroot "$WD" /bin/bash -c "/usr/bin/chmod $3 ${path}"
 }
 
 
@@ -436,9 +441,8 @@ check_vars
 
 ensure_host_dirs
 
-build_in_docker
-
 if [ "${CHECKPOINT}" -eq 0 ]; then
+	build_in_docker
 	start_from_scratch
 	create_snapshot "tarball"
 else
@@ -481,4 +485,4 @@ process_user_dir
 
 sudo chown -R $(id -u):$(id -g) "${CACHE}" "${BUILDDIR}"
 
-create_snapshot "inst"
+#sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_inst"
