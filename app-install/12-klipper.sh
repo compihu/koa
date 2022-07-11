@@ -52,7 +52,7 @@ EOF
 sudo systemctl enable klipper.service
 
 
-sudo tee /etc/systemd/system/klipper-mcu.service >/dev/null <<-EOF
+sudo tee /etc/systemd/system/klipper_mcu.service >/dev/null <<-EOF
 	[Unit]
 	Description=Klipper MCU on Raspberry Pi
 	After=local-fs.target
@@ -67,6 +67,8 @@ sudo tee /etc/systemd/system/klipper-mcu.service >/dev/null <<-EOF
 	Restart=always
 	RestartSec=10
 EOF
+
+sudo systemctl enable klipper_mcu.service
 
 
 cat >"${CONFIG_PATH}/printer.cfg" <<-EOF

@@ -44,12 +44,14 @@ check_vars()
 	check_var "WIFI_SSID"
 	check_var "WIFI_PASSWD"
 	check_var "TRUSTED_NET"
+	check_var "TARGET_HOSTNAME"
+	check_var "ROOT_PASSWORD"
 }
 
 
 create_snapshot()
 {
-	[ "${CREATE_SNAPSHOTS}" ] || [ -z "${USE_EXT4}" ] || return
+	[ "${CREATE_SNAPSHOTS}" ] || [ "${USE_EXT4}" ] || return 0
 
 	local snapshot="$1"
 	[ -d "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}" ] && sudo btrfs subvolume delete "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}"
@@ -243,9 +245,12 @@ system_setup()
 
 		systemctl enable avahi-daemon.service
 
+		echo "root:${ROOT_PASSWORD}" | chpasswd
 		usermod -l "${TARGET_USER}" -d "/home/${TARGET_USER}" -m alarm
 		groupmod -n "${TARGET_USER}" alarm
 		usermod -a -G tty,video,audio,wheel,uucp "${TARGET_USER}"
+		[ "${USER_PASSWORD}" ] && echo "${TARGET_USER}:${USER_PASSWORD}" | chpasswd
+
 		echo "${TARGET_HOSTNAME}" >/etc/hostname
 
 		git clone https://aur.archlinux.org/${AURHELPER}-bin.git
@@ -382,9 +387,9 @@ cleanup()
 
 ensure_host_dirs()
 {
-	for dir in "${WD}" "${BUILDDIR}" "${CACHE}"; do
+	for dir in "${WD}" "${BUILDDIR}" "${CACHE}" "${SNAPSHOTDIR}"; do
 		if [ ! -d "${dir}" ]; then
-			mkdir "${dir}"
+			mkdir -p "${dir}"
 			chmod 777 "${dir}"
 		fi
 	done
@@ -429,8 +434,6 @@ SNAPSHOTS[inst]=${highest}
 unset LOOPDEV
 unset MOUNTED
 
-trap cleanup EXIT
-
 parse_userdir $@
 apply_secrets
 parse_params $@
@@ -438,6 +441,8 @@ parse_params $@
 check
 show_environment
 check_vars
+
+trap cleanup EXIT
 
 ensure_host_dirs
 

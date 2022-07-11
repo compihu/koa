@@ -19,15 +19,17 @@ function parse_userdir
 			-is | --imgsize | \
 			-v  | --subvolume | \
 			-wd | --workdir | \
-			-ws | --wifi_ssid | \
+			-wa | --wifi-ap | \
 			-wp | --wifi-passwd )
 				shift
 				;;
 			-4 | --ext4 | \
+			-h | -? | \
 			-s | --snapshots )
 				;;
 			* )
 				echo "Unknown option $1."
+				show_help
 				return 1
 				;;
 		esac
@@ -85,7 +87,7 @@ function parse_params
 				WD="$2"
 				shift
 				;;
-			-ws | --wifi_ssid )
+			-wa | --wifi-ap )
 				WIFI_SSID="$2"
 				shift
 				;;
@@ -101,8 +103,13 @@ function parse_params
 			-s | --snapshots )
 				CREATE_SNAPSHOTS=1
 				;;
+			-h | -? )
+				show_help
+				return 1
+				;;
 			* )
 				echo "Unknown option $1."
+				show_help
 				return 1
 				;;
 		esac
@@ -149,4 +156,25 @@ show_environment()
 	echo "Start from:  ${SNAPSHOT}"
 	echo "-------------------------------------------------"
 	echo
+}
+
+
+show_help()
+{
+	echo -e "Params: \n" \
+		"	-u  | --user <arg>\n" \
+		"	-ah | --aurhelper <arg>\n" \
+		"	-bs | --bootsize <arg>\n" \
+		"	-c  | --cachedir <arg>\n" \
+		"	-bd | --builddir <arg>\n" \
+		"	-as | --apply-snapshot <arg>\n" \
+		"	-hn | --hostname <arg>\n" \
+		"	-i  | --image <arg>\n" \
+		"	-is | --imgsize <arg>\n" \
+		"	-v  | --subvolume <arg>\n" \
+		"	-wd | --workdir <arg>\n" \
+		"	-wa | --wifi-ap <arg>\n" \
+		"	-wp | --wifi-passwd <arg>\n" \
+		"	-4  | --ext4\n" \
+		"	-s  | --snapshots"
 }
