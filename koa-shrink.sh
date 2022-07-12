@@ -27,12 +27,12 @@ trap cleanup EXIT
 loopdev=( $(sudo losetup --find --show --partscan "${IMG}") )
 parts=( "${loopdev}p1" "${loopdev}p2" )
 
-sudo mount ${parts[1]} "${WD}"
+sudo mount ${parts[1]} "${WD}" -ocompress=zstd:15
 
 deleted=0
 for subvol in "${WD}"/*; do
 	sv=$(basename "${subvol}")
-	[ -d "${subvol}" ] && [ "${sv}" != "${SUBVOL}" ] && [ "${sv}" != "${SUBVOL}_inst" ] && sudo btrfs subvolume delete "${subvol}" && let ++deleted
+	[ -d "${subvol}" ] && [ "${sv}" != "${SUBVOL}" ] && sudo btrfs subvolume delete "${subvol}" && let ++deleted
 done
 
 if [ ${deleted} -gt 0 ]; then
@@ -47,7 +47,10 @@ if [ ${deleted} -gt 0 ]; then
 	done
 	sleep 5
 	echo " done in" $(( count * 10 + 5 )) "secods"
+	sudo btrfs filesystem defragment -r -czstd "${WD}/${SUBVOL}"
 fi
+
+# [ -d "${WD}/${SUBVOL}_inst" ] || sudo btrfs subvolume snapshot "${WD}/${SUBVOL}" "${WD}/${SUBVOL}_inst"
 
 while sudo btrfs filesystem resize -100M "${WD}"; do sleep 1; done
 while sudo btrfs filesystem resize -10M "${WD}"; do sleep 1; done

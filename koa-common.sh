@@ -130,7 +130,7 @@ function parse_params
 	export WD="${WD:-$SCRIPTDIR/target}"
 	export CACHE="${CACHE:-$SCRIPTDIR/cache}"
 	export BUILDDIR="${BUILDDIR:-$SCRIPTDIR/build}"
-	export IMGSIZE="${IMGSIZE:-2500MB}"
+	export IMGSIZE="${IMGSIZE:-2400MiB}"
 	export BOOTSIZE="${BOOTSIZE:-64MiB}"
 	export TARGET_HOSTNAME="${TARGET_HOSTNAME:-koa}"
 	export SUBVOL="${SUBVOL:-@koa_root}"
