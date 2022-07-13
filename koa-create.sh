@@ -317,7 +317,7 @@ system_setup()
 			-e 's/^#?(RuntimeMaxUse)=.*$/\1=16M/' \
 			"${WD}/etc/systemd/journald.conf"
 	
-	# TODO: tune this later
+	# TODO: tune sudoers later
 	echo '%wheel ALL=(ALL:ALL) NOPASSWD: ALL' | sudo tee "${WD}/etc/sudoers.d/wheel-nopasswd" >/dev/null
 	sudo sed -i -e 's/#MAKEFLAGS.*/MAKEFLAGS="-j$(nproc)"/' -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" "${WD}/etc/makepkg.conf"
 	# sudo sed -i -e "s/^\(PKGEXT=.*\)xz'/\1zst'/" "${WD}/etc/makepkg.conf"
@@ -343,12 +343,14 @@ build_in_docker()
 
 apply_fileprops()
 {
-	local full_path=$(echo "${WD}/$1" | sed -E 's#/+#/#g' | envsubst)
-	local path=$(echo "$1" | envsubst)
-	local owner=$(echo "$2" | envsubst)
-	if [ ! -e "${full_path}" ]; then sudo mkdir -p "${full_path}"; fi
-	sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R ${owner} ${path}"
-	[ -z "$3" ] || sudo chroot "$WD" /bin/bash -c "/usr/bin/chmod $3 ${path}"
+	readarray -d ' ' -t params <<< "$1"
+	local full_path=$(echo "${WD}${params[0]}" | envsubst)
+	local path=$(echo "${params[0]}" | envsubst)
+	local owner=$(echo "${params[1]%$'\n'}" | envsubst) # removing trailing \n possibly added by here document (<<<"$1")
+	local mode=${params[2]%$'\n'} # removing trailing \n from the end of the last param added by here document (<<<"$1")
+
+	sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R ${owner} ${path}" # we need bash to expand ${path}
+	[ -z "${mode}" ] || sudo chmod ${mode} ${full_path}
 }
 
 
@@ -367,7 +369,7 @@ process_user_dir()
 
 	if [ -f "${USERDIR}"/fileprops ]; then
 		while read line; do
-			[ -z "${line}" ]  || [[ "${line}" =~ ^[[:space:]]*\#.* ]] || apply_fileprops ${line}
+			[ -z "${line}" ]  || [[ "${line}" =~ ^[[:space:]]*\#.* ]] || apply_fileprops "${line}"
 		done <"${USERDIR}"/fileprops
 	fi
 }
