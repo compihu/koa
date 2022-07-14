@@ -1,0 +1,2 @@
+/home/${TARGET_USER} ${TARGET_USER}:${TARGET_USER}
+/etc/ssh/ssh_host_* root:root 600

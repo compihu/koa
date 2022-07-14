@@ -1,0 +1,26 @@
+termcapinfo xterm|xterms|xs|rxvt ti@:te@
+altscreen on
+startup_message off
+#vbell off
+deflogin on
+vbell on
+vbell_msg "   Wuff  ----  Wuff!!  "
+defscrollback 1024
+
+# Remove some stupid / dangerous key bindings
+bind ^k
+#bind L
+bind ^\
+# Make them better
+bind \\ quit
+bind K kill
+bind I login on
+bind O login off
+bind } history
+hardstatus alwayslastline "%{wk}%?%-Lw%?%{bw}%n*%f %t%?(%u)%?%{wk}%?%+Lw%= %{mk}@ %H %{ck}%Y%{wk}-%{ck}%m%{wk}-%{ck}%d %{yk}%D %{gk}%c"
+
+# Change to left/right window in relation to current window (wraps on edges)
+# ALT-,.
+bindkey "^[," prev
+bindkey "^[." next
+

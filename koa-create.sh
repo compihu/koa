@@ -17,8 +17,10 @@ check()
 	check_bin mkfs.msdos
 	check_bin mkfs.btrfs
 	check_bin curl
-	check_bin jq
+	#check_bin jq
 	check_bin xz
+	check_bin docker
+
 
 	if [ ! -f "${USERDIR}/mcu.config" ]; then
 		echo "Create user/mcu.config for compiling MCU firmware"
@@ -28,7 +30,7 @@ check()
 
 apply_secrets()
 {
-	if [ ! -x "${USERDIR}/secrets.sh" ]; then
+	if [ ! -f "${USERDIR}/secrets.sh" ]; then
 		echo "Create user/secrets.sh to set WIFI_SSID and WIFI_PASSWD"
 		exit 1
 	fi

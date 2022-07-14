@@ -1,4 +1,7 @@
 #!/bin/bash
 export WIFI_SSID=mynetwork
 export WIFI_PASSWD=mypassword
-export TRUSTED_NET=172.17.17.0/24
+export TARGET_HOSTNAME=anycubic
+export TRUSTED_NET="192.168.1.0/24"
+export ROOT_PASSWORD=anycubic
+export USER_PASSWORD=klipper
