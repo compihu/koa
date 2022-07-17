@@ -1,0 +1,14 @@
+[Unit]
+Desctiption=Apply user-supplied configuration
+Requires=boot.mount
+After=boot.mount
+Before=klipper.service nginx.service
+
+[Service]
+Type=OneShot
+RemainAfterExit=True
+ExecStart=/usr/local/bin/apply-config.sh
+
+[Install]
+WantedBy=klipper.service
+WantedBy=nginx.service

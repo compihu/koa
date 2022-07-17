@@ -4,6 +4,7 @@
 /snapshots/
 /tmp/
 /*.img*
+/*.zip
 /ArchLinuxARM-rpi-*
 /.vscode/
 /user/

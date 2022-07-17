@@ -84,3 +84,5 @@ sudo tee /etc/tmpfiles.d/klipper.conf >>/dev/null <<-EOF
 	d ${LOG_PATH} 2775 ${TARGET_USER} ${TARGET_USER} - -
 	d /run/klipper 0755 ${TARGET_USER} tty - -
 EOF
+
+cp /build/klipper.bin "${BASE_PATH}/"

@@ -1,2 +1,3 @@
-/home/${TARGET_USER} ${TARGET_USER}:${TARGET_USER}
-/etc/ssh/ssh_host_* root:root 600
+/home/${TARGET_USER}    ${TARGET_USER}:${TARGET_USER}
+/etc/ssh/ssh_host_*     root:root                       600
+/etc/hostname           root:root                       664

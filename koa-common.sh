@@ -24,7 +24,7 @@ function parse_userdir
 				shift
 				;;
 			-4 | --ext4 | \
-			-h | -? | \
+			-h | -? | --help | \
 			-s | --snapshots )
 				;;
 			* )
@@ -103,7 +103,7 @@ function parse_params
 			-s | --snapshots )
 				CREATE_SNAPSHOTS=1
 				;;
-			-h | -? )
+			-h | -? | --help)
 				show_help
 				return 1
 				;;
@@ -176,5 +176,6 @@ show_help()
 		"	-wa | --wifi-ap <arg>\n" \
 		"	-wp | --wifi-passwd <arg>\n" \
 		"	-4  | --ext4\n" \
-		"	-s  | --snapshots"
+		"	-s  | --snapshots" \
+		"	-h  | -? | --help"
 }

@@ -57,7 +57,7 @@ create_snapshot()
 
 	local snapshot="$1"
 	[ -d "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}" ] && sudo btrfs subvolume delete "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}"
-	sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}"
+	sudo btrfs sub snap "${WD}/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_${snapshot}"
 	sudo tar -C "${WD}/boot" -c . | xz -9 >"${SNAPSHOTDIR}/${snapshot}-boot.tar.xz"
 }
 
@@ -239,11 +239,11 @@ upgrade()
 
 system_setup()
 {
-	sudo chroot "$WD" /bin/bash -l <<-EOF
+	sudo chroot "${WD}" /bin/bash -l <<-EOF
 		set -ex
-		pacman --noconfirm --needed -S sudo base-devel python3 python-setuptools git usbutils nginx polkit v4l-utils avahi parted
+		pacman --noconfirm --needed -S sudo base-devel python3 python-setuptools python-wheel git usbutils nginx polkit v4l-utils avahi parted unzip
 		# TODO: remove once development is finished
-		pacman --noconfirm -S vim mc screen man-db bash-completion
+		pacman --noconfirm -S vim mc screen man-db bash-completion htop
 
 		systemctl enable avahi-daemon.service
 
@@ -263,12 +263,12 @@ system_setup()
 		rm -rf ${AURHELPER}-bin
 	EOF
 
-	sudo tee -a "$WD/etc/fstab" >/dev/null <<-EOF
+	sudo tee -a "${WD}/etc/fstab" >/dev/null <<-EOF
 		/dev/mmcblk0p2 /mnt/fs_root btrfs defaults,compress=zstd:15,noatime 0 0
 		/dev/mmcblk0p1 /boot        msdos defaults                          0 2
 	EOF
 
-	sudo tee "$WD/etc/systemd/network/wlan.network" >/dev/null <<-EOF
+	sudo tee "${WD}/etc/systemd/network/wlan.network" >/dev/null <<-EOF
 		[Match]
 		Name=wlan0
 
@@ -277,7 +277,7 @@ system_setup()
 		UseDomains=true
 	EOF
 
-	sudo tee "$WD/etc/wpa_supplicant/wpa_supplicant-wlan0.conf" >/dev/null <<-EOF
+	sudo tee "${WD}/etc/wpa_supplicant/wpa_supplicant-wlan0.conf" >/dev/null <<-EOF
 		ctrl_interface=/var/run/wpa_supplicant
 		ctrl_interface_group=0
 		update_config=1
@@ -293,9 +293,7 @@ system_setup()
 		}
 	EOF
 
-	sudo chroot "$WD" /bin/bash -l <<-EOF
-		systemctl enable wpa_supplicant@wlan0
-	EOF
+	sudo chroot "${WD}" /bin/bash -l -c "systemctl enable wpa_supplicant@wlan0"
 
 	# seems to fix slow ssh root login problem
 	# sudo sed -i -E 's/(^-session\s+.*pam_systemd.so.*)/#\1/' "${WD}/etc/pam.d/system-login"
@@ -351,14 +349,14 @@ apply_fileprops()
 	local owner=$(echo "${params[1]%$'\n'}" | envsubst) # removing trailing \n possibly added by here document (<<<"$1")
 	local mode=${params[2]%$'\n'} # removing trailing \n from the end of the last param added by here document (<<<"$1")
 
-	sudo chroot "$WD" /bin/bash -c "/usr/bin/chown -R ${owner} ${path}" # we need bash to expand ${path}
+	sudo chroot "${WD}" /bin/bash -c "/usr/bin/chown -R ${owner} ${path}" # we need bash to expand ${path}
 	[ -z "${mode}" ] || sudo chmod ${mode} ${full_path}
 }
 
 
 process_user_dir()
 {
-	[ -d "${USERDIR}/files" ] && sudo cp -rv "${USERDIR}"/files/* "$WD/"
+	[ -d "${USERDIR}/files" ] && sudo cp -rv "${USERDIR}"/files/* "${WD}/"
 	if [ -d "${USERDIR}/scripts" ]; then
 		for script in "${USERDIR}"/scripts/*; do
 			if [ -f "${script}" -a -x "${script}" ]; then
@@ -371,7 +369,9 @@ process_user_dir()
 
 	if [ -f "${USERDIR}"/fileprops ]; then
 		while read line; do
-			[ -z "${line}" ]  || [[ "${line}" =~ ^[[:space:]]*\#.* ]] || apply_fileprops "${line}"
+			if [ "${line}" ]  && ! [[ "${line}" =~ ^[[:space:]]*\#.* ]]; then
+				apply_fileprops "$(echo "${line}" | sed -E 's/\s+/ /g')"
+			fi
 		done <"${USERDIR}"/fileprops
 	fi
 }
@@ -397,6 +397,14 @@ ensure_host_dirs()
 			chmod 777 "${dir}"
 		fi
 	done
+}
+
+
+install_config_updater()
+{
+	sudo cp "${SCRIPTDIR}/files/apply-config.sh" "${WD}/usr/local/bin/"
+	sudo cp "${SCRIPTDIR}/files/apply-config.service" "${WD}/etc/systemd/system/"
+	sudo chroot "${WD}" /bin/bash -l -c "systemctl enable apply-config.service"
 }
 
 
@@ -469,7 +477,7 @@ if [ "${CHECKPOINT}" -lt 3 ]; then
 fi
 
 cp "${SCRIPTDIR}/klipper_rpi.config" "${WD}/tmp/"
-sudo tee -a "$WD/tmp/environment" >/dev/null <<-EOF
+sudo tee -a "${WD}/tmp/environment" >/dev/null <<-EOF
 	export TRUSTED_NET="${TRUSTED_NET}"
 	export AURHELPER="${AURHELPER}"
 	export DEFAULT_UI=mainsail
@@ -477,7 +485,15 @@ sudo tee -a "$WD/tmp/environment" >/dev/null <<-EOF
 	export BASE_PATH=/home/"${TARGET_USER}"
 	export CONFIG_PATH="\${BASE_PATH}/klipper-config"
 	export GCODE_SPOOL="\${BASE_PATH}/gcode-spool"
-	export LOG_PATH=/tmp/klipper-logs
+	export LOG_PATH=/tmp/klipper-logs 
+EOF
+
+sudo tee -a "${WD}/boot/environment" >/dev/null <<-EOF
+	export TARGET_USER="${TARGET_USER}"
+	export BASE_PATH=/home/"${TARGET_USER}"
+	export CONFIG_PATH="\${BASE_PATH}/klipper-config"
+	export GCODE_SPOOL="\${BASE_PATH}/gcode-spool"
+	export LOG_PATH=/tmp/klipper-logs 
 EOF
 
 for script in "${SCRIPTDIR}"/app-install/??-*.sh; do
@@ -488,10 +504,11 @@ for script in "${SCRIPTDIR}"/app-install/??-*.sh; do
 	fi
 done
 
-sudo chroot "$WD" /usr/bin/chown -R "${TARGET_USER}":"${TARGET_USER}" "/home/${TARGET_USER}"
+sudo chroot "${WD}" /usr/bin/chown -R "${TARGET_USER}":"${TARGET_USER}" "/home/${TARGET_USER}"
 
 process_user_dir
+install_config_updater
 
 sudo chown -R $(id -u):$(id -g) "${CACHE}" "${BUILDDIR}"
 
-#sudo btrfs sub snap "$WD/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_inst"
+#sudo btrfs sub snap "${WD}/mnt/fs_root/${SUBVOL}" "${WD}/mnt/fs_root/${SUBVOL}_inst"
