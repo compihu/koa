@@ -21,7 +21,9 @@ pushd moonraker
 "../${VENV}/bin/python3" -m compileall -o 0 -o 1 moonraker
 popd
 
-moonraker/scripts/set-policykit-rules.sh
+curl -s 'https://github.com/compihu/moonraker/raw/polkit-121/scripts/set-policykit-rules.sh' | /bin/bash
+# moonraker's script does not work starting with polkit 121. Download the fixed version until merged upstream
+# moonraker/scripts/set-policykit-rules.sh
 
 sudo tee /etc/systemd/system/moonraker.service <<-EOF
 	[Unit]
